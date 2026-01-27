@@ -59,18 +59,19 @@ def inject_clario_css():
 
 
 # --- 2. FUNÇÃO AUXILIAR PARA OS CARDS ---
-def render_kpi_card(icon, label, value, delta, is_positive=True, color="#e73469"):
-    delta_class = "card-delta-pos" if is_positive else "card-delta-neg"
-    delta_prefix = "▲" if is_positive else "▼"
+# Provavelmente sua função está assim ou parecida:
+def render_kpi_card(icon, label, value, delta, is_positive=True, color="#e73469", key=None):
+    # ... seu CSS de markdown aqui ...
+
+    # SE houver um botão ou link_button aqui, ele PRECISA da key única:
+    # if st.button("Detalhes", key=f"btn_{key}"):
+    #     pass
 
     st.markdown(f"""
         <div class="kpi-card" style="border-left-color: {color};">
-            <div style="display: flex; align-items: center;">
-                <span class="pink-icon" style="color: {color};">{icon}</span>
-                <span class="card-label">{label}</span>
-            </div>
+            <div class="card-label"><span class="pink-icon" style="color:{color};">{icon}</span>{label}</div>
             <div class="card-value">{value}</div>
-            <div class="{delta_class}">{delta_prefix} {delta}</div>
+            <div style="color:{color}; font-size:13px; font-weight:700;">{delta}</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -119,11 +120,11 @@ def renderizar_dashboard():
     st.markdown("<br>", unsafe_allow_html=True)
     k1, k2, k3 = st.columns(3)
     with k1:
-        render_kpi_card("account_balance", "Saldo Total", "CHF 12.450,00", "2.5% (mês)")
+        render_kpi_card("account_balance", "Saldo Total", "CHF 12.450,00", "2.5% (mês)", key="dash_saldo")
     with k2:
-        render_kpi_card("monitoring", "Investimentos", "CHF 45.102,00", "CHF 320,00")
+        render_kpi_card("monitoring", "Investimentos", "CHF 45.102,00", "CHF 320,00", key="dash_invest")
     with k3:
-        render_kpi_card("savings", "Economia", "CHF 1.250,00", "15%", color="#32BCAD")
+        render_kpi_card("savings", "Economia", "CHF 1.250,00", "15%", color="#32BCAD", key="dash_eco")
 
     # --- SEÇÃO DE GRÁFICOS ---
     st.markdown("<br>", unsafe_allow_html=True)
@@ -167,16 +168,15 @@ def renderizar_dashboard():
                 unsafe_allow_html=True)
 
     m1, m2, m3, m4 = st.columns(4)
-
     with m1:
-        render_kpi_card("trending_up", "Rentabilidade", "+1.85%", "Mês atual")
+        render_kpi_card("trending_up", "Rentabilidade", "+1.85%", "Mês atual", key="mkt_rent")
     with m2:
-        render_kpi_card("payments", "USD / CHF", "0.88", "0.2%", is_positive=False, color="#555")
+        render_kpi_card("payments", "USD / CHF", "0.88", "0.2%", is_positive=False, color="#555", key="mkt_usd")
     with m3:
-        render_kpi_card("currency_bitcoin", "Bitcoin (BTC)", "CHF 62.4k", "4.1%", color="#555")
+        render_kpi_card("currency_bitcoin", "Bitcoin (BTC)", "CHF 62.4k", "4.1%", color="#555", key="mkt_btc")
     with m4:
-        render_kpi_card("show_chart", "B3 (Ibovespa)", "128.5k pts", "1.2%", is_positive=False, color="#555")
-
+        render_kpi_card("show_chart", "B3 (Ibovespa)", "128.5k pts", "1.2%", is_positive=False, color="#555",
+                        key="mkt_b3")
     # --- SEÇÃO PAGAMENTOS ---
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('### <span class="pink-icon header-icon">calendar_today</span> Pagamentos Pendentes',
