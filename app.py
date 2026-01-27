@@ -10,7 +10,6 @@ st.set_page_config(
 # Importa as telas da pasta src
 from src.tela_login import renderizar_login
 from src.tela_dashboard import renderizar_dashboard
-from src.tela_cadastro import renderizar_cadastro
 
 # 2. Inicializa o estado da sessão (Session State)
 if 'logado' not in st.session_state:
