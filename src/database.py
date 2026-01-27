@@ -40,7 +40,32 @@ def criar_usuario_admin():
     else:
         print("ℹ️ Usuário admin já existe.")
 
+
 def buscar_usuario_por_email(email):
-    # Ajustado para usar 'db'
-    response = db.table("usuarios").select("*").eq("email", email).execute()
-    return response.data[0] if response.data else None
+    """
+    Busca o usuário completo para fins de autenticação (Login).
+    """
+    try:
+        # Usamos a variável 'db' que configuramos anteriormente
+        response = db.table("usuarios").select("*").eq("email", email).execute()
+
+        if response.data and len(response.data) > 0:
+            return response.data[0]
+        return None
+    except Exception as e:
+        print(f"Erro ao buscar usuário para login: {e}")
+        return None
+
+
+def buscar_perfil_usuario(email):
+    """
+    Busca apenas o essencial para a UI do Dashboard (Saudação).
+    """
+    try:
+        response = db.table("usuarios").select("nome", "sobrenome").eq("email", email).execute()
+        if response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        print(f"Erro ao buscar perfil: {e}")
+        return None
