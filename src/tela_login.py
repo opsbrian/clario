@@ -63,8 +63,8 @@ def popup_cadastro():
 # --- 2. TELA DE LOGIN COM INTELIGÊNCIA DE TEMA ---
 def renderizar_login():
     # Carregamos os dados das imagens
-    logo_dark_data = carregar_svg_base64("img/clario_logo_dark.svg")
-    logo_light_data = carregar_svg_base64("img/clario_logo_light.svg")
+    logo_dark_data = carregar_svg_base64("img/clario_logo_light.svg")
+    logo_light_data = carregar_svg_base64("img/clario_logo_dark.svg")
 
     # Injeção de CSS com Variáveis Dinâmicas e Media Queries
     st.markdown(f"""
