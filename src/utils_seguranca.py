@@ -1,24 +1,32 @@
 import bcrypt
 
 
-def gerar_hash(senha_plana):
+def gerar_hash(senha: str) -> bytes:
     """
-    Recebe '1234' e retorna o hash seguro (bytes).
+    Cria um hash seguro usando bcrypt com salt aleatório.
     """
-    senha_bytes = senha_plana.encode('utf-8')
+    # Transforma a string em bytes
+    senha_bytes = senha.encode('utf-8')
+    # Gera o salt e o hash
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(senha_bytes, salt)
 
 
-def verificar_senha(senha_plana, senha_hash_banco):
+def verificar_hash(senha_digitada: str, senha_hash_db: str) -> bool:
     """
-    Compara a senha digitada com o hash do banco.
-    O Supabase pode retornar o hash como string, então tratamos isso.
+    Compara uma senha digitada com o hash salvo no banco.
+    Aceita o hash do banco tanto em string quanto em bytes.
     """
-    senha_digitada_bytes = senha_plana.encode('utf-8')
+    try:
+        # Garante que ambos estão em bytes para a comparação do bcrypt
+        senha_digitada_bytes = senha_digitada.encode('utf-8')
 
-    # Se vier do Supabase como string, converte para bytes
-    if isinstance(senha_hash_banco, str):
-        senha_hash_banco = senha_hash_banco.encode('utf-8')
+        if isinstance(senha_hash_db, str):
+            senha_hash_db_bytes = senha_hash_db.encode('utf-8')
+        else:
+            senha_hash_db_bytes = senha_hash_db
 
-    return bcrypt.checkpw(senha_digitada_bytes, senha_hash_banco)
+        return bcrypt.checkpw(senha_digitada_bytes, senha_hash_db_bytes)
+    except Exception as e:
+        print(f"Erro na verificação de segurança: {e}")
+        return False

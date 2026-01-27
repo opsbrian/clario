@@ -1,24 +1,29 @@
-import os
-from postgrest import SyncPostgrestClient  # Versão mais leve
-from dotenv import load_dotenv
+import streamlit as st
+from postgrest import SyncPostgrestClient
 from src.utils_seguranca import gerar_hash
 
-load_dotenv()
+# 1. MELHOR PRÁTICA: Usar st.secrets em vez de load_dotenv para apps no ar
+# O Streamlit Cloud lê isso automaticamente do painel de segredos
+try:
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+except (KeyError, FileNotFoundError):
+    # Fallback para desenvolvimento local (caso ainda use .env)
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
 
-url = os.environ.get("SUPABASE_URL")
-key = os.environ.get("SUPABASE_KEY")
-
-# Conexão direta com a tabela via API REST do Supabase
-# Isso substitui o 'create_client' do pacote pesado
+# 2. RENOMEADO: De 'client' para 'db' para bater com o seu src/__init__.py
 headers = {"apikey": key, "Authorization": f"Bearer {key}"}
-client = SyncPostgrestClient(f"{url}/rest/v1", headers=headers)
-
+db = SyncPostgrestClient(f"{url}/rest/v1", headers=headers)
 
 def criar_usuario_admin():
     email_admin = "admin@clario.com"
 
-    # Busca se existe
-    response = client.table("usuarios").select("*").eq("email", email_admin).execute()
+    # Busca se existe usando a variável 'db'
+    response = db.table("usuarios").select("*").eq("email", email_admin).execute()
 
     if not response.data:
         senha_segura = gerar_hash('1234').decode('utf-8')
@@ -27,15 +32,15 @@ def criar_usuario_admin():
             "sobrenome": "Sistema",
             "email": email_admin,
             "senha": senha_segura,
-            "pais": "Brasil",
-            "cidade": "São Paulo"
+            "pais": "Suíça", # Ajustado para o contexto de Genebra
+            "cidade": "Genebra"
         }
-        client.table("usuarios").insert(novo_usuario).execute()
+        db.table("usuarios").insert(novo_usuario).execute()
         print("✅ Usuário admin criado com sucesso!")
     else:
         print("ℹ️ Usuário admin já existe.")
 
-
 def buscar_usuario_por_email(email):
-    response = client.table("usuarios").select("*").eq("email", email).execute()
+    # Ajustado para usar 'db'
+    response = db.table("usuarios").select("*").eq("email", email).execute()
     return response.data[0] if response.data else None

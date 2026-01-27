@@ -1,8 +1,9 @@
 import streamlit as st
 import time
 import base64
-from src.database import client
+from src.database import db as client
 from src.utils_seguranca import gerar_hash
+from src import verificar_login
 
 
 # --- FUNÇÃO AUXILIAR PARA CARREGAR AS LOGOS SEM ERRO DE CACHE ---
@@ -122,8 +123,19 @@ def renderizar_login():
                               key="login_pass")
 
         if st.button("Continuar", use_container_width=True):
-            # Lógica de login aqui
-            pass
+            if not email or not senha:
+                st.warning("Preencha todos os campos.")
+            else:
+                # Chama a lógica que criamos no pacote 'src'
+                if verificar_login(email, senha):
+                    st.session_state.logado = True
+                    st.session_state.usuario_email = email
+
+                    st.toast("Autenticado com sucesso!", icon="🚀")
+                    time.sleep(1)  # Delay para o usuário ler o toast
+                    st.rerun()  # FAZ O APP VOLTAR AO TOPO E ENTRAR NO DASHBOARD
+                else:
+                    st.error("E-mail ou senha incorretos.")
 
         st.markdown("<p style='text-align: center; margin: 20px 0;'>— ou —</p>", unsafe_allow_html=True)
 
