@@ -105,17 +105,6 @@ def renderizar_dashboard():
     else:
         nome_exibicao = "Brian"
 
-    # --- SIDEBAR ---
-    with st.sidebar:
-        st.markdown("### 🇨🇭 Clariô Finance")
-        st.button("Home", icon=":material/home:", use_container_width=True)
-        st.button("Investimentos", icon=":material/trending_up:", use_container_width=True)
-        st.button("Configurações", icon=":material/settings:", use_container_width=True)
-
-        st.markdown("---")
-        if st.button("Sair / Logout", icon=":material/logout:", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
 
     # --- CABEÇALHO ---
     st.markdown(f"""
