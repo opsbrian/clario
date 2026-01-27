@@ -17,10 +17,14 @@ def popup_cadastro():
         c1, c2 = st.columns(2)
         with c1:
             nome = st.text_input("Nome", placeholder="Nome")
-            email = st.text_input("E-mail", placeholder="seu@email.com")
-        with c2:
             sobrenome = st.text_input("Sobrenome", placeholder="Sobrenome")
-            telefone = st.text_input("Telefone", placeholder="+41")
+            email = st.text_input("E-mail", placeholder="seu@email.com")
+
+        with c2:
+            telefone = st.text_input("Telefone", placeholder="+55")
+            pais = st.text_input("País", placeholder="Brasil")
+            cidade = st.text_input("Cidade", placeholder="São Paulo")
+
 
         senha = st.text_input("Senha", type="password", placeholder="Nova senha")
         confirmar_senha = st.text_input("Confirme a Senha", type="password")
@@ -36,6 +40,7 @@ def popup_cadastro():
                     senha_hash = gerar_hash(senha).decode('utf-8')
                     novo_usuario = {
                         "nome": nome, "sobrenome": sobrenome, "email": email,
+                        "pais": pais, "cidade": cidade,
                         "senha": senha_hash, "telefone": telefone
                     }
                     client.table("usuarios").insert(novo_usuario).execute()
