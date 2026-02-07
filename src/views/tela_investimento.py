@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
+from datetime import datetime
 
 
 # ==========================================
@@ -26,10 +26,7 @@ def inject_clario_css():
             .header-icon { font-size: 28px; vertical-align: middle; }
 
             /* Botão Primário (Rosa Clariô) */
-            div.stButton > button[kind="primary"] {
-                background-color: var(--pink-clario);
-                border-color: var(--pink-clario);
-                color: white;
+            div.stButton > button {
                 border-radius: 10px;
                 font-weight: 600;
             }
@@ -57,12 +54,6 @@ def inject_clario_css():
             .inv-symbol { font-size: 19px; font-weight: 800; color: var(--pink-clario); }
             .profit-pos { color: var(--green-clario); font-weight: 700; }
             .profit-neg { color: var(--pink-clario); font-weight: 700; }
-
-            /* Modal/Dialog Header */
-            div[data-testid="stDialog"] div[role="dialog"] {
-                border-radius: 20px;
-                border-top: 10px solid var(--pink-clario);
-            }
         </style>
     """, unsafe_allow_html=True)
 
@@ -141,6 +132,7 @@ def mostrar_popup_aporte():
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.form_submit_button("Confirmar Registro", use_container_width=True):
+            # TODO: No futuro, chamar a função de salvar no Supabase aqui
             st.success(f"Transação de {ativo} processada!")
             st.balloons()
             st.rerun()
@@ -152,9 +144,12 @@ def mostrar_popup_aporte():
 
 def render_metrics_topo(df):
     k1, k2, k3, k4 = st.columns(4)
-    with k1: render_kpi_card("account_balance_wallet", "Patrimônio", f"CHF {df['Total Atual'].sum():,.2f}", "3.2%")
-    with k2: render_kpi_card("show_chart", "Lucro Total", f"CHF {df['Lucro/Prejuízo'].sum():,.2f}", "1.5%",
-                             color="#18CB96")
+    # Exemplo de lógica simples para exibir totais
+    total_atual = df['Total Atual'].sum() if not df.empty else 0.0
+    lucro_total = df['Lucro/Prejuízo'].sum() if not df.empty else 0.0
+
+    with k1: render_kpi_card("account_balance_wallet", "Patrimônio", f"CHF {total_atual:,.2f}", "3.2%")
+    with k2: render_kpi_card("show_chart", "Lucro Total", f"CHF {lucro_total:,.2f}", "1.5%", color="#18CB96")
     with k3: render_kpi_card("stars", "Top Ativo", "Bitcoin", "42%", color="#32BCAD")
     with k4: render_kpi_card("payments", "Dividendos", "CHF 420.00", "CHF 32.00")
 
@@ -164,23 +159,33 @@ def render_charts_performance(df):
     c1, c2 = st.columns([2, 1])
     with c1:
         st.markdown('### <span class="pink-icon">bar_chart</span> Performance', unsafe_allow_html=True)
-        fig = px.bar(df, x='Ativo', y='Lucro/Prejuízo', color='Lucro/Prejuízo',
-                     color_continuous_scale=['#E73469', '#18CB96'])
-        fig.update_layout(height=350, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                          template="plotly_white" if st.get_option("theme.base") == "light" else "plotly_dark")
-        st.plotly_chart(fig, use_container_width=True)
+        if not df.empty:
+            fig = px.bar(df, x='Ativo', y='Lucro/Prejuízo', color='Lucro/Prejuízo',
+                         color_continuous_scale=['#E73469', '#18CB96'])
+            fig.update_layout(height=350, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Sem dados para o gráfico.")
+
     with c2:
         st.markdown('### <span class="pink-icon">pie_chart</span> Alocação', unsafe_allow_html=True)
-        fig_p = px.pie(df, values='Total Atual', names='Tipo', hole=0.6,
-                       color_discrete_sequence=['#E73469', '#373643', '#18CB96', '#f3799d'])
-        fig_p.update_layout(height=350, showlegend=True, paper_bgcolor='rgba(0,0,0,0)',
-                            legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5))
-        st.plotly_chart(fig_p, use_container_width=True)
+        if not df.empty:
+            fig_p = px.pie(df, values='Total Atual', names='Tipo', hole=0.6,
+                           color_discrete_sequence=['#E73469', '#373643', '#18CB96', '#f3799d'])
+            fig_p.update_layout(height=350, showlegend=True, paper_bgcolor='rgba(0,0,0,0)',
+                                legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5))
+            st.plotly_chart(fig_p, use_container_width=True)
+        else:
+            st.info("Sem dados para alocação.")
 
 
 def render_lista_cards_investimentos(df):
     st.markdown("---")
     st.markdown('### <span class="pink-icon header-icon">list_alt</span> Portfólio Detalhado', unsafe_allow_html=True)
+
+    if df.empty:
+        st.warning("Nenhum investimento encontrado.")
+        return
 
     for _, row in df.iterrows():
         is_pos = row['Rentabilidade %'] >= 0
@@ -207,6 +212,7 @@ def render_lista_cards_investimentos(df):
 # ==========================================
 
 def gerar_investimentos_fake():
+    """Gera dados temporários até conectarmos no Supabase."""
     df = pd.DataFrame({
         'Ativo': ['BTC', 'ETH', 'AAPL', 'IVVB11', 'USD/CHF', 'PETR4'],
         'Tipo': ['Cripto', 'Cripto', 'Ação US', 'ETF', 'Moeda', 'Ação BR'],
@@ -223,6 +229,8 @@ def gerar_investimentos_fake():
 
 def renderizar_investimentos():
     inject_clario_css()
+
+    # Busca dados (Fake por enquanto, depois trocaremos por: buscar_investimentos(user_id))
     df_inv = gerar_investimentos_fake()
 
     # Cabeçalho com botão no topo
@@ -238,7 +246,3 @@ def renderizar_investimentos():
     render_metrics_topo(df_inv)
     render_charts_performance(df_inv)
     render_lista_cards_investimentos(df_inv)
-
-
-if __name__ == "__main__":
-    renderizar_investimentos()

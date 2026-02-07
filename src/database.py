@@ -1,71 +1,67 @@
 import streamlit as st
-from postgrest import SyncPostgrestClient
-from src.utils_seguranca import gerar_hash
+from supabase import create_client, Client
+import os
+import pandas as pd  # Importante para os gráficos!
 
-# 1. MELHOR PRÁTICA: Usar st.secrets em vez de load_dotenv para apps no ar
-# O Streamlit Cloud lê isso automaticamente do painel de segredos
+# --- 1. CONFIGURAÇÃO DA CONEXÃO SUPABASE ---
+# Tenta pegar as senhas do arquivo secrets.toml ou do ambiente
 try:
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
-except (KeyError, FileNotFoundError):
-    # Fallback para desenvolvimento local (caso ainda use .env)
-    import os
-    from dotenv import load_dotenv
-    load_dotenv()
+except:
+    # Fallback para variáveis de ambiente (caso não use secrets)
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_KEY")
 
-# 2. RENOMEADO: De 'client' para 'db' para bater com o seu src/__init__.py
-headers = {"apikey": key, "Authorization": f"Bearer {key}"}
-db = SyncPostgrestClient(f"{url}/rest/v1", headers=headers)
-
-def criar_usuario_admin():
-    email_admin = "admin@clario.com"
-
-    # Busca se existe usando a variável 'db'
-    response = db.table("usuarios").select("*").eq("email", email_admin).execute()
-
-    if not response.data:
-        senha_segura = gerar_hash('1234').decode('utf-8')
-        novo_usuario = {
-            "nome": "Administrador",
-            "sobrenome": "Sistema",
-            "email": email_admin,
-            "senha": senha_segura,
-            "pais": "Suíça", # Ajustado para o contexto de Genebra
-            "cidade": "Genebra"
-        }
-        db.table("usuarios").insert(novo_usuario).execute()
-        print("✅ Usuário admin criado com sucesso!")
-    else:
-        print("ℹ️ Usuário admin já existe.")
+# Cria a conexão se as chaves existirem
+if url and key:
+    db: Client = create_client(url, key)
+else:
+    # Se não achar as chaves, paramos o app para evitar erros em cascata
+    st.error("ERRO CRÍTICO: Configure o arquivo .streamlit/secrets.toml com as chaves do Supabase!")
+    st.stop()
 
 
-def buscar_usuario_por_email(email):
+# --- 2. FUNÇÕES DE BUSCA ---
+
+def buscar_perfil_usuario(user_id):
     """
-    Busca o usuário completo para fins de autenticação (Login).
+    Busca dados do perfil (Nome, Telefone, etc) na tabela 'profiles'
     """
     try:
-        # Usamos a variável 'db' que configuramos anteriormente
-        response = db.table("usuarios").select("*").eq("email", email).execute()
-
-        if response.data and len(response.data) > 0:
-            return response.data[0]
-        return None
-    except Exception as e:
-        print(f"Erro ao buscar usuário para login: {e}")
-        return None
-
-
-def buscar_perfil_usuario(email):
-    """
-    Busca apenas o essencial para a UI do Dashboard (Saudação).
-    """
-    try:
-        response = db.table("usuarios").select("nome", "sobrenome").eq("email", email).execute()
+        response = db.table("profiles").select("*").eq("id", user_id).execute()
         if response.data:
             return response.data[0]
-        return None
     except Exception as e:
         print(f"Erro ao buscar perfil: {e}")
-        return None
+    return None
+
+
+def buscar_transacoes_dashboard(user_id):
+    """
+    Busca as transações reais no Supabase e retorna um DataFrame
+    formatado para o Dashboard.
+    """
+    try:
+        # 1. Busca no banco (Filtrando pelo usuário)
+        response = db.table("transactions").select("*").eq("user_id", user_id).execute()
+        dados = response.data
+
+        # 2. Se não tiver dados, retorna DataFrame vazio com as colunas certas
+        if not dados:
+            return pd.DataFrame(columns=['data', 'valor', 'categoria', 'tipo'])
+
+        # 3. Converte para Pandas DataFrame
+        df = pd.DataFrame(dados)
+
+        # 4. Ajusta os tipos de dados para o Plotly não reclamar
+        df['data'] = pd.to_datetime(df['date'])  # Converte string '2026-01-01' para Data real
+        df['valor'] = pd.to_numeric(df['amount'])
+        df['categoria'] = df['category']
+
+        return df
+
+    except Exception as e:
+        print(f"Erro ao buscar transações: {e}")
+        # Retorna vazio em caso de erro para não quebrar a tela
+        return pd.DataFrame(columns=['data', 'valor', 'categoria', 'tipo'])
