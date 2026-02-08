@@ -2,167 +2,231 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from src.services.dashboard_service import buscar_perfil_usuario, buscar_resumo_financeiro, buscar_transacoes_graficos
+from src.services.dashboard_service import (
+    buscar_perfil_usuario, buscar_resumo_financeiro, buscar_transacoes_graficos
+)
 
 
-# --- CSS GLOBAL ---
+# ==========================================
+# 1. CSS E ESTILIZAÇÃO (AJUSTE FINO DE UI)
+# ==========================================
 def inject_clario_css():
     st.markdown("""
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
         <style>
-            :root { --pink-clario: #E73469; --green-clario: #18CB96; --dark-bg: #373643; }
-            .pink-icon { color: var(--pink-clario); font-family: 'Material Symbols Outlined'; font-size: 24px; vertical-align: middle; margin-right: 8px; }
+            :root { --pink-clario: #E73469; --green-clario: #18CB96; --dark-bg: #373643; --light-pill: rgba(255,255,255,0.1); }
+
+            /* Ícones */
+            .material-symbols-outlined { 
+                font-size: 20px; /* Reduzi um pouco para ficar elegante */
+                vertical-align: middle; 
+                margin-right: 6px;
+            }
+
+            /* Card Compacto */
             .kpi-card { 
                 background-color: var(--secondary-background-color); 
-                padding: 20px; 
-                border-radius: 15px; 
-                border-left: 5px solid var(--pink-clario); 
-                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+                padding: 10px 18px;
+                border-radius: 12px; 
+                border-left: 4px solid var(--pink-clario);
+                box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
+                margin-bottom: 10px; 
+                transition: transform 0.2s;
             }
-            .card-label { opacity: 0.8; font-size: 14px; font-weight: 500; }
-            .card-value { font-size: 26px; font-weight: 800; margin: 5px 0; }
-            .card-sub { font-size: 12px; opacity: 0.6; }
+
+            .kpi-card:hover {
+                transform: translateY(-2px); /* Efeito sutil ao passar o mouse */
+            }
+
+            /* Rótulo (Título do Card) */
+            .card-label { 
+                opacity: 0.8; 
+                font-size: 13px; 
+                font-weight: 600; 
+                text-transform: uppercase; 
+                display: flex; 
+                align-items: center; 
+                margin-bottom: 6px; 
+                white-space: nowrap; /* O SEGREDO: Impede que "Balanço Líquido" quebre linha */
+            }
+
+            /* Valor Principal */
+            .card-value { 
+                font-size: 22px; /* Ajustado para não estourar */
+                font-weight: 800; 
+                color: #FFF; 
+                margin-bottom: 4px;
+            }
+
+            /* Subtexto */
+            .card-sub { 
+                font-size: 11px; 
+                opacity: 0.6; 
+                line-height: 1.4; 
+                white-space: nowrap; 
+                overflow: hidden; 
+                text-overflow: ellipsis;
+            }
+
+            /* Pílula de conta */
+            .pill { 
+                background: var(--light-pill); 
+                padding: 2px 6px; 
+                border-radius: 4px; 
+                margin-right: 4px; 
+                display: inline-block; 
+                font-size: 10px;
+            }
         </style>
     """, unsafe_allow_html=True)
 
 
-# --- COMPONENTE DE CARD ---
-def render_kpi_card(icon, label, value, subtext, color="#e73469"):
+def render_kpi_card(icon, label, value, sub_html, color="#E73469"):
     st.markdown(f"""
         <div class="kpi-card" style="border-left-color: {color};">
-            <div class="card-label"><span class="pink-icon" style="color:{color};">{icon}</span>{label}</div>
+            <div class="card-label"><span class="material-symbols-outlined" style="color:{color};">{icon}</span>{label}</div>
             <div class="card-value">{value}</div>
-            <div class="card-sub">{subtext}</div>
+            <div class="card-sub">{sub_html}</div>
         </div>
     """, unsafe_allow_html=True)
 
 
-# --- DASHBOARD PRINCIPAL ---
+# ==========================================
+# 2. RENDERIZAÇÃO DO DASHBOARD
+# ==========================================
 def renderizar_dashboard():
     inject_clario_css()
 
-    # 1. Identificação do Usuário
-    nome_exibicao = "Usuário"
-    user_id = None
+    if 'user' not in st.session_state:
+        st.error("Faça login para visualizar.")
+        return
 
-    if 'user' in st.session_state and st.session_state.user:
-        user_id = st.session_state.user.id
-        perfil = buscar_perfil_usuario(user_id)
-        if perfil and perfil.get('nome'):
-            nome_exibicao = perfil.get('nome').split()[0].title()
+    uid = st.session_state.user.id
 
-    st.markdown(f"""
-        <div style='display: flex; align-items: center; gap: 15px; margin-bottom: 20px;'>
-            <span class="pink-icon" style="font-size: 36px;">waving_hand</span>
-            <div>
-                <h2 style='margin: 0;'>Salut, {nome_exibicao}!</h2>
-                <p style='opacity: 0.7; margin: 0; font-size: 0.9em;'>Aqui está o resumo das suas finanças.</p>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    # Buscas de dados
+    perfil = buscar_perfil_usuario(uid)
+    resumo = buscar_resumo_financeiro(uid)
+    df = buscar_transacoes_graficos(uid)
 
-    if user_id:
-        # 2. Busca Dados Consolidados
-        resumo = buscar_resumo_financeiro(user_id)
-        df = buscar_transacoes_graficos(
-            user_id)  # Deve conter colunas: data, valor, tipo (saida, entrada, cartao), categoria
+    # Saudação
+    nome = perfil.get('nome', 'Usuário').split()[0].title()
+    st.markdown(f"## :material/waving_hand: Salut, {nome}!")
+    st.markdown(
+        "<p style='opacity: 0.6; font-size: 14px; margin-top: -10px; margin-bottom: 25px;'>Aqui está o resumo das suas finanças.</p>",
+        unsafe_allow_html=True)
 
-        st.markdown("<br>", unsafe_allow_html=True)
+    # --- LINHA 1: KPIs Principais ---
+    k1, k2, k3, k4 = st.columns(4)
 
-        # 3. KPIs (Ajustados conforme solicitado)
-        k1, k2, k3 = st.columns(3)
+    with k1:  # SALDO ATUAL
+        contas = resumo.get('detalhe_contas', [])
+        sub = "Disponível"
+        if len(contas) > 0:
+            # Mostra no máximo 2 contas na pílula para não quebrar layout, ou soma texto
+            sub = "".join([f"<span class='pill'>{c['banco']}: {c['saldo']:,.0f}</span>" for c in contas[:2]])
+        render_kpi_card("account_balance", "Saldo Atual", f"R$ {resumo.get('saldo_final', 0):,.2f}", sub, "#18CB96")
 
-        with k1:
-            # KPI 1: Saldo Atual (Dinheiro em conta)
-            saldo_atual = resumo.get('saldo_final', 0.0)
-            render_kpi_card("account_balance", "Saldo Atual", f"R$ {saldo_atual:,.2f}",
-                            "Disponível em conta", color="#18CB96")
+    with k2:  # FATURA CARTÃO
+        dt_ini = resumo.get('cartao_inicio')
+        dt_fim = resumo.get('cartao_fim')
+        sub = "Ciclo Vigente"
 
-        with k2:
-            # KPI 2: Fatura Atual (Cartão de Crédito)
-            # Assume que o serviço retorna 'fatura_atual'. Se não, soma transações do tipo 'cartao'
-            fatura_atual = resumo.get('fatura_atual', 0.0)
-            render_kpi_card("credit_card", "Fatura Atual", f"R$ {fatura_atual:,.2f}",
-                            "Cartão de Crédito", color="#e73469")
+        # Formata data DD/MM se existir
+        if dt_ini and dt_fim:
+            try:
+                d1 = dt_ini.split('-')[2] + "/" + dt_ini.split('-')[1]
+                d2 = dt_fim.split('-')[2] + "/" + dt_fim.split('-')[1]
+                sub = f"{d1} até {d2}"
+            except:
+                pass
 
-        with k3:
-            # KPI 3: Balanço Líquido (Entradas - Saídas Totais)
-            # Entradas Totais - (Saídas Conta + Gastos Cartão)
-            balanco = resumo.get('entradas', 0) - resumo.get('saidas', 0)
-            cor_balanco = "#18CB96" if balanco >= 0 else "#ff4b4b"
-            render_kpi_card("savings", "Balanço Líquido", f"R$ {balanco:,.2f}",
-                            "Entradas vs Gastos", color=cor_balanco)
+        render_kpi_card("credit_card", "Fatura Atual", f"R$ {resumo.get('fatura_atual', 0):,.2f}", sub, "#E73469")
 
-        # 4. Gráficos
-        st.markdown("<br>", unsafe_allow_html=True)
+    with k3:  # INVESTIMENTOS
+        r = resumo.get('rentabilidade_total', 0.0)
+        l = resumo.get('lucro_prejuizo_total', 0.0)
 
-        if not df.empty:
-            c1, c2 = st.columns([2, 1])
+        if pd.isna(r): r = 0.0
+        if pd.isna(l): l = 0.0
 
-            with c1:
-                st.markdown('### Evolução Patrimonial')
-                if 'data' in df.columns and 'valor' in df.columns:
-                    # Agrupa por data e soma valores do dia
-                    df_chart = df.groupby('data')['valor'].sum().reset_index().sort_values('data')
+        cor = "#18CB96" if l >= 0 else "#FF4B4B"
+        sinal = "+" if l >= 0 else ""
+        sub = f"<span style='color:{cor}'>{sinal}{r:.1f}% (R$ {l:,.2f})</span>"
 
-                    # LOGICA AJUSTADA: Soma Acumulada (Cumsum) para ver evolução e não apenas fluxo diário
-                    df_chart['saldo_acumulado'] = df_chart['valor'].cumsum() + resumo.get('saldo_inicial', 0)
+        render_kpi_card("monitoring", "Investimentos", f"R$ {resumo.get('total_investido', 0):,.2f}", sub, "#FF751F")
 
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=df_chart['data'],
-                        y=df_chart['saldo_acumulado'],  # Usando o acumulado
-                        mode='lines+markers',
-                        line=dict(color='#e73469', width=3),
-                        marker=dict(size=6),
-                        fill='tozeroy',
-                        fillcolor='rgba(231, 52, 105, 0.1)'
-                    ))
-                    fig.update_layout(
-                        height=350, template="plotly_white",
-                        margin=dict(l=0, r=0, t=10, b=0),
-                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                        yaxis_title="Patrimônio (R$)"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+    with k4:  # BALANÇO LÍQUIDO
+        balanco = resumo.get('balanco_liquido', 0.0)
+        cor = "#18CB96" if balanco >= 0 else "#FF4B4B"
+        sinal = "+" if balanco >= 0 else ""
+        render_kpi_card("savings", "Balanço Líquido", f"R$ {balanco:,.2f}", "Saldo Final - Inicial", cor)
 
-            with c2:
-                st.markdown('### Gastos por Categoria')
-                if 'categoria' in df.columns:
-                    # LOGICA AJUSTADA: Filtra 'saida' (conta) E 'cartao' (crédito)
-                    # Assumindo que o DF unificado usa tipos como 'saida' e 'cartao' ou valores negativos
-                    filtro_gastos = df['tipo'].isin(['saida', 'cartao', 'debito', 'credito'])
-                    df_saidas = df[filtro_gastos]
+    # --- LINHA 2: GRÁFICOS ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    if not df.empty:
+        c1, c2 = st.columns([2, 1])
 
-                    # Se o filtro por string falhar, fallback para valores negativos (saídas)
-                    if df_saidas.empty and not df.empty:
-                        df_saidas = df[df['valor'] < 0]
+        with c1:
+            st.markdown("### :material/insights: Evolução Patrimonial")
+            if 'data' in df.columns:
+                # Filtra apenas o que afeta patrimônio (banco)
+                df_evo = df[df['tipo'].isin(['entrada', 'saida'])].groupby('data')[
+                    'valor_grafico'].sum().reset_index().sort_values('data')
 
-                    if not df_saidas.empty:
-                        # Garante valores positivos para o gráfico de rosca
-                        df_saidas['valor_abs'] = df_saidas['valor'].abs()
+                saldo_inicial = float(perfil.get('saldo_inicial', 0) or 0)
+                df_evo['acumulado'] = df_evo['valor_grafico'].cumsum() + saldo_inicial
 
-                        fig_pie = px.donut(
-                            df_saidas, values='valor_abs', names='categoria',
-                            hole=0.6,
-                            color_discrete_sequence=['#e73469', '#373643', '#18CB96', '#f3799d', '#ffb703']
-                        )
-                        fig_pie.update_layout(
-                            height=350, showlegend=False,
-                            margin=dict(l=10, r=10, t=10, b=10),
-                            paper_bgcolor='rgba(0,0,0,0)'
-                        )
-                        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                        st.plotly_chart(fig_pie, use_container_width=True)
-                    else:
-                        st.info("Sem gastos registrados para exibir gráfico.")
-        else:
-            st.markdown("""
-                <div style="text-align: center; opacity: 0.6; padding: 30px; border: 1px dashed #555; border-radius: 10px;">
-                    <p>O Saldo Inicial já consta no topo! 👆</p>
-                    <p>Comece a registrar transações bancárias ou de cartão para ver os gráficos.</p>
-                </div>
-            """, unsafe_allow_html=True)
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=df_evo['data'], y=df_evo['acumulado'],
+                    mode='lines', line=dict(color='#E73469', width=3),
+                    fill='tozeroy', fillcolor='rgba(231, 52, 105, 0.05)'
+                ))
+                fig.update_layout(height=320, margin=dict(l=0, r=0, t=20, b=0), paper_bgcolor='rgba(0,0,0,0)',
+                                  plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            st.markdown("### :material/pie_chart: Gastos")
+            # Filtra Saídas Bancárias + Gastos Cartão
+            filtro = df['tipo'].isin(['saida', 'cartao', 'debito'])
+            df_g = df[filtro].copy()
+            if not df_g.empty:
+                df_g['valor_abs'] = df_g['valor'].abs()
+                fig = px.pie(
+                    df_g, values='valor_abs', names='categoria',
+                    hole=0.7, color_discrete_sequence=['#E73469', '#C2185B', '#880E4F', '#F8BBD0', '#373643']
+                )
+                fig.update_layout(height=320, showlegend=False, margin=dict(l=0, r=0, t=0, b=0),
+                                  paper_bgcolor='rgba(0,0,0,0)')
+                fig.update_traces(textposition='inside', textinfo='percent')
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Sem gastos registrados.")
+    else:
+        st.info("Registre movimentações para ver os gráficos.")
+
+    # --- LINHA 3: ESTRATÉGIA ---
+    st.markdown("### :material/analytics: Análise Estratégica")
+    a1, a2, a3 = st.columns(3)
+
+    with a1:  # SAÚDE FINANCEIRA
+        r = resumo.get('saude_ratio', 0.0)
+        if pd.isna(r): r = 0.0
+        cor = "#18CB96" if r < 70 else "#FF751F"
+        render_kpi_card("health_and_safety", "Saúde dos Gastos", f"{r:.1f}% da Renda", "Meta ideal: < 70%", cor)
+
+    with a2:  # TOP ATIVO
+        nome = resumo.get('top_ativo_nome', '---')
+        lucro = resumo.get('top_ativo_lucro', 0.0)
+        if pd.isna(lucro): lucro = 0.0
+
+        cor_top = "#18CB96" if lucro >= 0 else "#E73469"
+        render_kpi_card("star", "Top Ativo", nome, f"Retorno: R$ {lucro:,.2f}", cor_top)
+
+    with a3:  # PAGAMENTOS FUTUROS
+        pagar = resumo.get('a_pagar', 0.0)
+        render_kpi_card("event_repeat", "Pagamentos Futuros", f"R$ {pagar:,.2f}", "Comprometido", "#FF751F")
 
 
 if __name__ == "__main__":
