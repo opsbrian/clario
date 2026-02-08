@@ -12,7 +12,6 @@ from src.services.investment_service import (
     buscar_evolucao_patrimonio
 )
 
-
 # ==========================================
 # 1. IDENTIDADE VISUAL (UX/UI DEFINITIVA)
 # ==========================================
@@ -90,7 +89,6 @@ def inject_clario_css():
         </style>
     """, unsafe_allow_html=True)
 
-
 # ==========================================
 # 2. DIALOGS (MODAIS)
 # ==========================================
@@ -109,13 +107,11 @@ def mostrar_popup_venda(ativo, qtd_total, cat_id):
 
         if st.form_submit_button("Confirmar Venda", type="primary", use_container_width=True):
             if qtd_v > 0:
-                # Na lógica de ledger, venda é um aporte com quantidade negativa
                 preco_un = valor_v / qtd_v
                 ok, msg = salvar_investimento(st.session_state.user.id, data_v, ativo, cat_id, preco_un, -qtd_v)
                 if ok:
                     st.toast(f"Venda de {ativo} registrada!", icon="✅")
                     st.rerun()
-
 
 @st.dialog("Novo Aporte :material/add_card:")
 def mostrar_popup_aporte():
@@ -169,16 +165,22 @@ def mostrar_popup_aporte():
                                               valor_total / quantidade, quantidade, rentabilidade_str)
                 if ok: st.rerun()
 
-
 # ==========================================
 # 3. COMPONENTES VISUAIS (KPIs e LISTA)
 # ==========================================
 
 def render_metrics_topo(df):
-    """Cards horizontais restaurados."""
+    """Cards horizontais com cotação do Dólar dinâmica via yfinance."""
     k1, k2, k3, k4 = st.columns(4)
     total = df['Total Atual BRL'].sum() if not df.empty else 0.0
     lucro = df['Lucro/Prejuízo BRL'].sum() if not df.empty else 0.0
+
+    # Busca dinâmica do Dólar
+    try:
+        usd_ticker = yf.Ticker("USDBRL=X")
+        usd_val = usd_ticker.history(period="1d")['Close'].iloc[-1]
+    except Exception:
+        usd_val = 5.22 # Fallback caso a API falhe
 
     with k1: st.markdown(
         f'<div class="kpi-card"><div class="card-label"><span class="material-symbols-rounded">account_balance_wallet</span>PATRIMÔNIO</div><div class="card-value">R$ {total:,.2f}</div></div>',
@@ -189,15 +191,14 @@ def render_metrics_topo(df):
             f'<div class="kpi-card" style="border-left-color:{cor}"><div class="card-label"><span class="material-symbols-rounded" style="color:{cor}">trending_up</span>LUCRO/PREJUÍZO</div><div class="card-value">R$ {lucro:,.2f}</div></div>',
             unsafe_allow_html=True)
     with k3: st.markdown(
-        f'<div class="kpi-card" style="border-left-color:#32BCAD"><div class="card-label"><span class="material-symbols-rounded" style="color:#32BCAD">grid_view</span>ATIVOS</div><div class="card-value">{len(df)}</div></div>',
+        f'<div class="kpi-card" style="border-left-color:#18cb96"><div class="card-label"><span class="material-symbols-rounded" style="color:#18cb96">grid_view</span>ATIVOS</div><div class="card-value">{len(df)}</div></div>',
         unsafe_allow_html=True)
     with k4: st.markdown(
-        f'<div class="kpi-card" style="border-left-color:#888"><div class="card-label"><span class="material-symbols-rounded" style="color:#888">currency_exchange</span>DÓLAR</div><div class="card-value">R$ 5.22</div></div>',
+        f'<div class="kpi-card" style="border-left-color:#ff751f"><div class="card-label"><span class="material-symbols-rounded" style="color:#ff751f">currency_exchange</span>DÓLAR HOJE</div><div class="card-value">R$ {usd_val:.2f}</div></div>',
         unsafe_allow_html=True)
 
-
 def render_lista_detalhada(df):
-    """Lista com labels restaurados e botão ícone puro (Secondary)."""
+    """Lista com labels restaurados e botão ícone puro."""
     st.markdown("---")
     st.markdown("### :material/list_alt: Detalhamento da Carteira")
     for _, row in df.iterrows():
@@ -205,11 +206,10 @@ def render_lista_detalhada(df):
         cor = "#18CB96" if is_pos else "#E73469"
         p_medio = row['Custo Total BRL'] / row['Quantidade']
 
-        # Correção do NameError: card_col e btn_col
+        # Definição das colunas para evitar NameError
         card_col, btn_col = st.columns([10, 1], vertical_alignment="center")
 
         with card_col:
-            # HTML sem indentação para evitar bug de renderização de Markdown
             html = f"""<div class="inv-card" style="border-left-color: {cor};">
 <div style="display: grid; grid-template-columns: 1.5fr repeat(4, 1fr) 1fr; gap: 10px; align-items: center;">
 <div><div style="font-size:16px; font-weight:800; color:var(--pink-clario);">{row['Ativo']}</div><div style="font-size:10px; opacity:0.6;">{row['Tipo']}</div></div>
@@ -222,7 +222,6 @@ def render_lista_detalhada(df):
             st.markdown(html, unsafe_allow_html=True)
 
         with btn_col:
-            # Botão de Ícone Puro: Sem label, ID único e estilo secundário
             if st.button(
                     label="",
                     key=f"baixa_venda_{row['Ativo']}_{row['id_categoria']}",
@@ -231,7 +230,6 @@ def render_lista_detalhada(df):
                     use_container_width=True
             ):
                 mostrar_popup_venda(row['Ativo'], row['Quantidade'], row['id_categoria'])
-
 
 # ==========================================
 # 4. ORQUESTRAÇÃO FINAL
@@ -244,8 +242,7 @@ def renderizar_investimentos():
 
     # Header
     col_h, col_b = st.columns([3.2, 1.8], vertical_alignment="bottom")
-    with col_h:
-        st.title("Meus Investimentos")
+    with col_h: st.title("Investimentos")
     with col_b:
         if st.button("Novo Aporte", icon=":material/add_card:", use_container_width=True, type="primary"):
             mostrar_popup_aporte()
