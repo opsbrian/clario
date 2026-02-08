@@ -5,25 +5,24 @@ from datetime import date, datetime
 from src.services.supabase_client import supabase
 import requests
 
-def salvar_investimento(user_id, data, ticker, categoria_id, preco_unitario_brl, qtd):
+def salvar_investimento(user_id, data, ticker, categoria_id, preco_unitario_brl, qtd, rentabilidade=None):
     """
-    Salva uma nova operação no Supabase.
-    O 'valor_investido' armazenado é o custo total em BRL (Preço Unitário * Qtd).
+    Salva a operação garantindo que o nome customizado vá para a 'descricao'.
     """
     try:
         dados = {
             "id_usuario": user_id,
             "data": data.isoformat(),
-            "descricao": ticker.upper().strip(),
+            "descricao": ticker.strip(), # Mantém o nome como o usuário digitou
             "id_categoria": categoria_id,
-            "valor_investido": preco_unitario_brl * qtd,  # Total pago em Reais
-            "quantidade": qtd
+            "valor_investido": preco_unitario_brl * qtd,
+            "quantidade": qtd,
+            "rentabilidade": rentabilidade # Novo campo para cálculos futuros
         }
         supabase.table("investimento").insert(dados).execute()
-        return True, "Investimento registrado com sucesso!"
+        return True, "Sucesso!"
     except Exception as e:
-        return False, f"Erro ao salvar: {str(e)}"
-
+        return False, f"Erro: {str(e)}"
 
 def buscar_portfolio_real(user_id):
     """
