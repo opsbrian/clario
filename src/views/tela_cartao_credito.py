@@ -222,8 +222,11 @@ def renderizar_tela_cartao():
     carregar_css()
     user_id = st.session_state.user.id
 
-    c_head, c_btn = st.columns([4, 1], vertical_alignment="center")
-    with c_head:
+    # 1. Ajuste do Head: Organiza Título, Seletor e Botão em uma única linha
+    # Ocupando o espaço de forma equilibrada (Proporção 2:1:1)
+    c_title, c_sel, c_btn = st.columns([2, 1, 0.8], vertical_alignment="center")
+
+    with c_title:
         st.markdown("## Meus Cartões")
 
     cartoes = listar_cartoes(user_id)
@@ -232,25 +235,43 @@ def renderizar_tela_cartao():
         return
 
     map_cartoes = {c['nome_cartao']: c for c in cartoes}
-    nome_sel = st.selectbox("Selecione o Cartão", list(map_cartoes.keys()), label_visibility="collapsed")
-    card_ativo = map_cartoes[nome_sel]
+
+    with c_sel:
+        # Colocamos o selectbox aqui para economizar espaço vertical
+        nome_sel = st.selectbox("Selecione o Cartão", list(map_cartoes.keys()), label_visibility="collapsed")
+        card_ativo = map_cartoes[nome_sel]
 
     with c_btn:
         idx_ativo = list(map_cartoes.keys()).index(nome_sel)
         if st.button("Lançar", icon=":material/add_card:", type="primary", use_container_width=True):
             popup_nova_compra(user_id, cartoes, idx_ativo)
 
+    # --- 2. FORA DAS COLUNAS DO HEADER ---
+    # Ao retirar a identação, os dados ocupam a largura total da página
     hoje = date.today()
     abas = []
     datas = []
 
-    for i in range(-1, 4):
-        dt = hoje + timedelta(days=i * 30)
+    indices_meses = [0, -1, 1, 2, 3]
+
+    for i in indices_meses:
         m = (hoje.month + i - 1) % 12 + 1
         y = hoje.year + (hoje.month + i - 1) // 12
-        abas.append(f"{get_mes_nome(m)} {str(y)[2:]}")
+
+        nome_mes = get_mes_nome(m)
+        ano_curto = str(y)[2:]
+
+        if i == 0:
+            label = f":material/credit_card: {nome_mes} {ano_curto} (Atual)"
+        elif i == -1:
+            label = f":material/history: {nome_mes} {ano_curto}"
+        else:
+            label = f":material/schedule: {nome_mes} {ano_curto}"
+
+        abas.append(label)
         datas.append((m, y))
 
+    # Criação das abas usando a largura total do container pai
     tabs = st.tabs(abas)
 
     for i, tab in enumerate(tabs):
@@ -263,4 +284,4 @@ def renderizar_tela_cartao():
                 render_fatura_card(dados_fatura)
                 render_lista_compras(dados_fatura['itens'])
             else:
-                st.error("Erro ao carregar fatura.")
+                st.info(f"Sem movimentações para {nome_mes} {ano_curto}.")

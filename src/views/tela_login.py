@@ -122,7 +122,7 @@ def popup_cadastro():
                 if auth_response.user:
                     st.success("Cadastro realizado! 📩")
                     st.info("Verifique seu e-mail para confirmar a conta antes de entrar.")
-                    time.sleep(4)
+                    time.sleep(5)
                     st.rerun()
                 else:
                     st.warning("Verifique se você já tem cadastro ou cheque seu e-mail.")
