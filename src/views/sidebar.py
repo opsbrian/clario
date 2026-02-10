@@ -1,6 +1,7 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 from src.services.supabase_client import supabase
+from src.services.cookie_service import limpar_cookie
 
 
 def renderizar_sidebar():
@@ -41,6 +42,7 @@ def renderizar_sidebar():
         """, unsafe_allow_html=True)
 
         # Menu
+        # Adicionei "Sair" como opção no menu
         selected = option_menu(
             menu_title=None,
             options=["Dashboard", "Transações", "Cartão de Crédito", "Investimentos", "Configurações", "Sair"],
@@ -52,6 +54,7 @@ def renderizar_sidebar():
             }
         )
 
+        # Se o usuário clicou em Sair, executa a função IMEDIATAMENTE
         if selected == "Sair":
             fazer_logout()
 
@@ -59,9 +62,26 @@ def renderizar_sidebar():
 
 
 def fazer_logout():
+    """Realiza o logout completo: Supabase, Cookies e Session State"""
+
+    # 1. Limpa o Cookie do navegador (Impede auto-login)
+    try:
+        limpar_cookie()
+    except Exception as e:
+        print(f"Erro ao limpar cookie: {e}")
+
+    # 2. Desloga do Supabase
     try:
         supabase.auth.sign_out()
-    except:
-        pass
+    except Exception as e:
+        print(f"Erro ao deslogar Supabase: {e}")
+
+    # 3. Limpa a sessão do Streamlit
     st.session_state.clear()
+
+    # Garante que as variáveis chaves foram resetadas
+    st.session_state.logado = False
+    st.session_state.user = None
+
+    # 4. Recarrega a página (vai cair na tela de login)
     st.rerun()

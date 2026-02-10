@@ -71,6 +71,22 @@ def atualizar_senha_usuario(nova_senha):
 # ==========================================
 # 3. UTILITÁRIOS
 # ==========================================
+def login_com_token(token):
+    """
+    Tenta logar usando apenas o Token (Cookie).
+    Retorna o User se funcionar.
+    """
+    try:
+        # Pede para o Supabase validar o token
+        response = supabase.auth.get_user(token)
+        if response and response.user:
+            return response.user
+        return None
+    except Exception as e:
+        # Se o token expirou ou é inválido
+        return None
+
+
 def obter_usuario_atual():
     """
     Verifica sessão ativa (Login ou Magic Link)

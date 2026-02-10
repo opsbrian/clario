@@ -2,6 +2,7 @@ import streamlit as st
 import time
 from datetime import date
 from src.services.supabase_client import supabase
+from src.services.cookie_service import salvar_token_no_cookie
 from src.services.auth_service import login_user, enviar_email_recuperacao
 
 # --- CONFIGURAÇÃO DAS IMAGENS ---
@@ -105,7 +106,14 @@ def renderizar_login():
 
             if st.button("Entrar", use_container_width=True, type="primary", icon=":material/login:"):
                 user, erro = login_user(email, senha)
+
                 if user:
+                    # --- NOVO: SALVA O TOKEN NA MÁQUINA DO USUÁRIO ---
+                    # Precisamos pegar o token da sessão atual
+                    session = supabase.auth.get_session()
+                    if session:
+                        salvar_token_no_cookie(session.access_token)
+
                     st.session_state.user = user
                     st.session_state.logado = True
                     st.rerun()
