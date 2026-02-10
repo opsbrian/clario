@@ -1,14 +1,46 @@
 import streamlit as st
 
-# Configuração da Página
+# 1. Configuração da Página
 st.set_page_config(
     page_title="Clariô Finance",
-    page_icon="img/clario_logo_dark.svg",  # Aponta para um arquivo local em vez de emoji
+    page_icon="img/clario_logo_dark.svg",  # Ícone da aba (favicon)
     layout="centered",
     initial_sidebar_state="expanded"
 )
 
-# Importações
+
+# 2. Injeção de CSS Global (Crucial para o tema Híbrido)
+# Isso permite que os elementos mudem de cor sozinhos
+def carregar_estilos_globais():
+    st.markdown("""
+        <style>
+        /* Classe para cards (usado na função de 'construção') */
+        .clario-card {
+            /* Usa a cor de fundo secundária do tema atual (cinza claro ou escuro) */
+            background-color: var(--secondary-background-color);
+            /* Borda sutil com transparência para funcionar no branco e no preto */
+            border: 1px solid rgba(128, 128, 128, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 10px;
+        }
+
+        /* Ajuste fino para textos dentro dos cards */
+        .clario-card p {
+            color: var(--text-color);
+            opacity: 0.8;
+        }
+
+        /* Lógica para logo na Sidebar (se usar PNGs) */
+        /* [data-theme="light"] .logo-img { background-image: url('https://eyyqaqtqylpmvhcfvtmn.supabase.co/storage/v1/object/public/logo/clario_escuro.png'); } */
+        /* [data-theme="dark"] .logo-img { background-image: url('https://eyyqaqtqylpmvhcfvtmn.supabase.co/storage/v1/object/public/logo/clario_claro.png'); } */
+        </style>
+    """, unsafe_allow_html=True)
+
+
+carregar_estilos_globais()
+
+# Importações (Mantidas conforme seu original)
 from src.views.tela_login import renderizar_login
 from src.views.tela_dashboard import renderizar_dashboard
 from src.views.tela_transacao import renderizar_nova_transacao
@@ -18,12 +50,14 @@ from src.views.tela_cartao_credito import renderizar_tela_cartao
 from src.views.tela_investimento import renderizar_investimentos
 
 
-# Função auxiliar para telas em construção
+# Função auxiliar para telas em construção (Refatorada para CSS Dinâmico)
 def renderizar_construcao(titulo):
+    # Agora usamos a classe CSS .clario-card definida acima
+    # e removemos os estilos 'chumbados' (hardcoded)
     st.markdown(f"""
-        <div style="padding: 20px; border: 1px solid #333; border-radius: 10px; margin-top: 0px;">
+        <div class="clario-card">
             <h2 style="color: #E73469; margin:0;">{titulo}</h2>
-            <p style="opacity: 0.7; margin-top: 10px;">Módulo em desenvolvimento.</p>
+            <p>Módulo em desenvolvimento.</p>
         </div>
     """, unsafe_allow_html=True)
 

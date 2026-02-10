@@ -1,56 +1,67 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 from src.services.supabase_client import supabase
-import time
 
 
 def renderizar_sidebar():
+    # --- 1. LINKS (Confira se abrem no navegador) ---
+    URL_LOGO_FUNDO_CLARO = "https://eyyqaqtqylpmvhcfvtmn.supabase.co/storage/v1/object/public/logo/clario_escuro.png"
+    URL_LOGO_FUNDO_ESCURO = "https://eyyqaqtqylpmvhcfvtmn.supabase.co/storage/v1/object/public/logo/clario_claro.png"
+
+    # --- 2. CSS À PROVA DE FALHAS ---
+    st.markdown("""
+        <style>
+        .sidebar-logo {
+            width: 180px;
+            max-width: 100%;
+            margin: 0 auto 20px auto;
+        }
+
+        /* --- LÓGICA DE EXIBIÇÃO --- */
+
+        /* 1. Por PADRÃO (ou Light Mode), mostra a logo escura e esconde a clara */
+        #img-logo-light { display: block !important; }
+        #img-logo-dark { display: none !important; }
+
+        /* 2. Se detectar DARK MODE, inverte a lógica */
+        [data-theme="dark"] #img-logo-light { display: none !important; }
+        [data-theme="dark"] #img-logo-dark { display: block !important; }
+
+        </style>
+    """, unsafe_allow_html=True)
+
+    # --- 3. HTML ---
     with st.sidebar:
-        # --- 1. IDENTIDADE VISUAL ---
-        # Substitui o título por imagem para um look de fintech premium
-        st.image("img/clario_logo_light.svg", use_container_width=True)
+        # Injetamos as duas imagens
+        st.markdown(f"""
+            <div style="text-align: center; padding-top: 15px;">
+                <img id="img-logo-light" class="sidebar-logo" src="{URL_LOGO_FUNDO_CLARO}" alt="Logo Clario">
+                <img id="img-logo-dark" class="sidebar-logo" src="{URL_LOGO_FUNDO_ESCURO}" alt="Logo Clario Dark">
+            </div>
+        """, unsafe_allow_html=True)
 
-        # Respiro entre a logo e o início dos links
-        st.markdown("<div style='margin-bottom: 25px;'></div>", unsafe_allow_html=True)
-
-        # --- 2. MENU DE NAVEGAÇÃO ---
+        # Menu
         selected = option_menu(
-            menu_title=None,  # Título removido para dar lugar à logo
+            menu_title=None,
             options=["Dashboard", "Transações", "Cartão de Crédito", "Investimentos", "Configurações", "Sair"],
-            icons=[
-                "grid-1x2", "arrow-left-right", "credit-card", "graph-up", "sliders", "box-arrow-right"
-            ],
+            icons=["speedometer2", "arrow-left-right", "credit-card", "graph-up-arrow", "gear", "box-arrow-right"],
             default_index=0,
             styles={
                 "container": {"padding": "0!important", "background-color": "transparent"},
-                "icon": {"color": "#fafafa", "font-size": "16px"},
-                "nav-link": {
-                    "font-size": "15px",
-                    "text-align": "left",
-                    "margin": "5px",
-                    "padding-left": "15px",
-                    "--hover-color": "#262730",
-                    "color": "#AAA",
-                },
-                "nav-link-selected": {
-                    "background-color": "#E73469",
-                    "font-weight": "600",
-                    "border-radius": "8px",
-                    "color": "#FFF"
-                }
+                "nav-link-selected": {"background-color": "#E73469"},
             }
         )
 
-        # --- 3. LÓGICA DE LOGOUT ---
         if selected == "Sair":
-            try:
-                supabase.auth.sign_out()
-            except Exception:
-                pass
+            fazer_logout()
 
-            st.session_state.clear()
-            st.toast("Encerrando sessão...", icon="🔒")
-            time.sleep(1)
-            st.rerun()
+    return selected
 
-        return selected
+
+def fazer_logout():
+    try:
+        supabase.auth.sign_out()
+    except:
+        pass
+    st.session_state.clear()
+    st.rerun()
