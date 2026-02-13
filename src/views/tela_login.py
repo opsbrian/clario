@@ -42,10 +42,9 @@ def popup_cadastro():
                         "email": email_cad, "password": senha_cad,
                         "options": {"data": {"nome": nome, "full_name": f"{nome} {sobrenome}"}}
                     })
-                    # O Trigger do banco vai salvar a data de nascimento na tabela usuarios
-                    # Mas precisamos garantir que o formato esteja certo
+
                     if auth_response.user:
-                        # Força atualização da data no perfil público (caso o trigger falhe ou demore)
+                        # Força atualização da data no perfil público
                         supabase.table("usuarios").insert({
                             "id_usuario": auth_response.user.id,
                             "email": email_cad,
@@ -55,6 +54,9 @@ def popup_cadastro():
 
                         st.success("Cadastro realizado! Verifique seu e-mail.")
                         time.sleep(2)
+
+                        # [CORREÇÃO] Reseta o estado para fechar o modal antes do rerun
+                        st.session_state.mostrar_cadastro = False
                         st.rerun()
                     else:
                         st.warning("Verifique o e-mail.")
@@ -64,8 +66,17 @@ def popup_cadastro():
 
 # --- TELA PRINCIPAL ---
 def renderizar_login():
+    # Inicializa estados
     if "auth_mode" not in st.session_state:
         st.session_state.auth_mode = "login"
+
+    # [CORREÇÃO] Inicializa o estado do popup
+    if "mostrar_cadastro" not in st.session_state:
+        st.session_state.mostrar_cadastro = False
+
+    # [CORREÇÃO] Função auxiliar apenas para mudar o estado
+    def abrir_modal_cadastro():
+        st.session_state.mostrar_cadastro = True
 
     st.markdown(f"""
         <style>
@@ -73,7 +84,7 @@ def renderizar_login():
         .login-logo-container {{ width: 100%; display: flex; justify-content: center; margin-top: -60px; margin-bottom: 10px; z-index: 1; }}
         div.stButton > button[kind="primary"], div.stButton > button[kind="secondary"] {{
             background-color: #E73469 !important; border: 1px solid #E73469 !important; color: white !important;
-            border-radius: 8px !important; height: 3em !important; font-weight: 600 !important;
+            border-radius: 8px !important; height: 2em !important; font-weight: 600 !important;
         }}
         div.stButton > button[kind="tertiary"] {{
             color: #E73469 !important; border: none !important; background: transparent !important;
@@ -108,8 +119,6 @@ def renderizar_login():
                 user, erro = login_user(email, senha)
 
                 if user:
-                    # --- NOVO: SALVA O TOKEN NA MÁQUINA DO USUÁRIO ---
-                    # Precisamos pegar o token da sessão atual
                     session = supabase.auth.get_session()
                     if session:
                         salvar_token_no_cookie(session.access_token)
@@ -128,7 +137,15 @@ def renderizar_login():
                 """<div style='text-align: center; margin: 15px 0; opacity: 0.5; font-size: 0.8em;'>— ou —</div>""",
                 unsafe_allow_html=True)
 
-            if st.button("Criar nova conta", type="secondary", use_container_width=True, icon=":material/person_add:"):
+            # [CORREÇÃO] Botão chama a função auxiliar via on_click
+            st.button("Criar nova conta",
+                      type="secondary",
+                      use_container_width=True,
+                      icon=":material/person_add:",
+                      on_click=abrir_modal_cadastro)
+
+            # [CORREÇÃO] Verificação de estado fora do botão para manter o modal aberto
+            if st.session_state.mostrar_cadastro:
                 popup_cadastro()
 
         # ESTADO B: RECUPERAÇÃO (ATUALIZADO)
@@ -138,7 +155,6 @@ def renderizar_login():
 
             email_rec = st.text_input("E-mail Cadastrado", key="rec_email")
 
-            # --- CAMPO DE DATA ADICIONADO ---
             nascimento_rec = st.date_input("Data de Nascimento", value=None,
                                            min_value=date(1920, 1, 1), max_value=date.today(), format="DD/MM/YYYY")
 
@@ -148,7 +164,6 @@ def renderizar_login():
                 if not email_rec or not nascimento_rec:
                     st.warning("Preencha todos os campos.")
                 else:
-                    # Passa os DOIS valores para o serviço
                     ok, msg = enviar_email_recuperacao(email_rec, nascimento_rec)
                     if ok:
                         st.success(msg)
