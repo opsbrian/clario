@@ -1,23 +1,21 @@
 import pandas as pd
-import yfinance as yf
 from datetime import datetime
 from src.services.supabase_client import supabase
+from src.services.investment_service import buscar_dados_resumidos_dashboard
+
+# IDs de categorias que consideramos "Investimento"
+CAT_IDS_INVESTIMENTO = [1, 2, 3]
 
 
-# ==========================================
-# 1. PERFIL
-# ==========================================
 def buscar_perfil_usuario(user_id):
     try:
-        res = supabase.table("usuarios").select("nome").eq("id_usuario", str(user_id)).maybe_single().execute()
-        return res.data if res.data else {"nome": "Usuário"}
+        res = supabase.table("usuarios").select("nome, saldo_inicial").eq("id_usuario",
+                                                                          str(user_id)).maybe_single().execute()
+        return res.data if res.data else {"nome": "Usuário", "saldo_inicial": 0}
     except:
-        return {"nome": "Usuário"}
+        return {"nome": "Usuário", "saldo_inicial": 0}
 
 
-# ==========================================
-# 2. RESUMO FINANCEIRO (INTEGRADO COM VIEW DE CICLOS)
-# ==========================================
 def buscar_resumo_financeiro(user_id):
     uid_str = str(user_id)
 
@@ -25,41 +23,44 @@ def buscar_resumo_financeiro(user_id):
         "saldo_final": 0.0, "detalhe_contas": [],
         "fatura_atual": 0.0, "a_pagar": 0.0,
         "entradas": 0.0, "saidas": 0.0, "balanco_liquido": 0.0,
-        "total_investido": 0.0, "rentabilidade_total": 0.0, "lucro_prejuizo_total": 0.0,
-        "top_ativo_nome": "---", "top_ativo_lucro": 0.0,
-        "saude_ratio": 0.0,
+
+        # INVESTIMENTOS
+        "invest_saldo_atual": 0.0,
+        "invest_custo_total": 0.0,
+        "invest_lucro_reais": 0.0,
+        "invest_lucro_pct": 0.0,
+        "top_ativo_nome": "---",
+        "top_ativo_lucro": 0.0,
+
+        # SAÚDE FINANCEIRA (Score 0-100)
+        "saude_score": 0.0,
+        "saude_texto": "---",
+
         "cartao_inicio": None, "cartao_fim": None,
         "cartao_uso_pct": 0.0, "cartao_qtd": 0
     }
 
     try:
-        # A. SALDO BANCÁRIO (View Geral)
+        # A. KPI GERAIS
         res_kpi = supabase.table("view_dashboard_kpis").select("*").eq("id_usuario", uid_str).maybe_single().execute()
         if res_kpi.data:
             r = res_kpi.data
             resumo["saldo_final"] = float(r.get("saldo_final") or 0)
-            resumo["balanco_liquido"] = float(r.get("balanco_liquido") or 0)
             resumo["a_pagar"] = float(r.get("a_pagar") or 0)
             resumo["entradas"] = float(r.get("entradas") or 0)
             resumo["saidas"] = float(r.get("saidas") or 0)
 
-        # B. FATURA DO CARTÃO (Busca TODOS os ciclos e filtra o ATUAL no Python)
+        # B. FATURA DO CARTÃO
         res_ciclos = supabase.table("view_faturas_por_ciclo").select("*").eq("id_usuario", uid_str).execute()
-
         if res_ciclos.data:
             df_ciclos = pd.DataFrame(res_ciclos.data)
             df_ciclos['data_inicio'] = pd.to_datetime(df_ciclos['data_inicio'])
             df_ciclos['data_fim'] = pd.to_datetime(df_ciclos['data_fim'])
 
-            # DATA HOJE: Aqui definimos o que é "Atual".
-            # Se seu PC está com data certa, usa datetime.now().
             hoje = datetime.now()
-
-            # Filtra a linha onde HOJE está entre Inicio e Fim
             mask_atual = (hoje >= df_ciclos['data_inicio']) & (hoje <= df_ciclos['data_fim'])
             fatura_atual_row = df_ciclos[mask_atual]
 
-            # Se encontrou o ciclo vigente
             if not fatura_atual_row.empty:
                 row = fatura_atual_row.iloc[0]
                 resumo["fatura_atual"] = float(row['valor_fatura'])
@@ -67,17 +68,8 @@ def buscar_resumo_financeiro(user_id):
                 resumo["cartao_qtd"] = int(row['qtd_transacoes'])
                 resumo["cartao_inicio"] = str(row['data_inicio'].date())
                 resumo["cartao_fim"] = str(row['data_fim'].date())
-            else:
-                # Se hoje não caiu em nenhum ciclo (ex: dados só no futuro), pega o mais próximo
-                # Opcional: Pegar o primeiro ciclo futuro ou mostrar zero
-                pass
 
-            # Atualiza Saúde
-            gastos_totais = resumo["saidas"] + resumo["fatura_atual"]
-            if resumo["entradas"] > 0:
-                resumo["saude_ratio"] = (gastos_totais / resumo["entradas"]) * 100
-
-        # C. DETALHE CONTAS
+        # C. CONTAS
         res_c = supabase.table("contas_bancarias").select("nome_banco, saldo_inicial").eq("id_usuario",
                                                                                           uid_str).execute()
         if res_c.data:
@@ -85,58 +77,66 @@ def buscar_resumo_financeiro(user_id):
                                         res_c.data]
 
         # D. INVESTIMENTOS
-        custo_investido = float(res_kpi.data.get("invest_custo_total") or 0) if res_kpi.data else 0
-        res_inv = supabase.table("investimento").select("descricao, quantidade, valor_investido").eq("id_usuario",
-                                                                                                     uid_str).execute()
-        if res_inv.data:
-            df_inv = pd.DataFrame(res_inv.data)
-            df_inv['valor_investido'] = pd.to_numeric(df_inv['valor_investido'], errors='coerce').fillna(0)
-            df_inv['quantidade'] = pd.to_numeric(df_inv['quantidade'], errors='coerce').fillna(0)
+        try:
+            saldo, custo, lucro, top_nome, top_lucro = buscar_dados_resumidos_dashboard(uid_str)
+            resumo["invest_saldo_atual"] = saldo
+            resumo["invest_custo_total"] = custo
+            resumo["invest_lucro_reais"] = lucro
+            resumo["invest_lucro_pct"] = (lucro / custo * 100) if custo > 0 else 0.0
+            resumo["top_ativo_nome"] = top_nome
+            resumo["top_ativo_lucro"] = top_lucro
+        except:
+            pass
 
-            carteira = df_inv.groupby('descricao').agg({'quantidade': 'sum', 'valor_investido': 'sum'}).reset_index()
+        resumo["balanco_liquido"] = resumo["saldo_final"] + resumo["invest_saldo_atual"]
 
-            patrimonio = 0.0
-            melhor_lucro = -float('inf')
-            top_ativo = "---"
+        # ==============================================================================
+        # E. CÁLCULO DO SCORE DE SAÚDE (LÓGICA SCORE BANCÁRIO)
+        # ==============================================================================
+        entradas = resumo["entradas"]
+        gastos_brutos = resumo["saidas"] + resumo["fatura_atual"]
 
-            try:
-                tickers = carteira['descricao'].unique().tolist()
-                cotacoes = {}
-                if tickers:
-                    q_tickers = [t + ".SA" if len(t) == 5 and t.isalpha() else t for t in tickers]
-                    dl = yf.download(q_tickers, period="1d", progress=False)['Close']
-                    if not dl.empty:
-                        for i, t in enumerate(tickers):
-                            try:
-                                val = dl.iloc[-1].item() if len(tickers) == 1 else dl[q_tickers[i]].iloc[-1]
-                                cotacoes[t] = val
-                            except:
-                                pass
-            except:
-                pass
+        # Abate aportes de investimento dos gastos
+        saidas_investimento = 0.0
+        try:
+            res_b_inv = supabase.table("transacoes_bancarias").select("valor").eq("id_usuario", uid_str).eq("tipo",
+                                                                                                            "saida").in_(
+                "id_categoria", CAT_IDS_INVESTIMENTO).execute()
+            if res_b_inv.data: saidas_investimento += sum(float(x['valor']) for x in res_b_inv.data)
 
-            for _, row in carteira.iterrows():
-                ativo = row['descricao']
-                qtd = float(row['quantidade'])
-                custo = float(row['valor_investido'])
-                pm = custo / qtd if qtd > 0 else 0
-                preco = cotacoes.get(ativo, pm)
-                if pd.isna(preco): preco = pm
+            res_c_inv = supabase.table("transacoes_cartao_credito").select("valor").eq("id_usuario", uid_str).in_(
+                "id_categoria", CAT_IDS_INVESTIMENTO).execute()
+            if res_c_inv.data: saidas_investimento += sum(float(x['valor']) for x in res_c_inv.data)
+        except:
+            pass
 
-                val_pos = preco * qtd
-                patrimonio += val_pos
-                lucro = val_pos - custo
-                if lucro > melhor_lucro:
-                    melhor_lucro = lucro
-                    top_ativo = ativo
+        gastos_ajustados = max(0.0, gastos_brutos - saidas_investimento)
 
-            resumo["total_investido"] = patrimonio
-            resumo["lucro_prejuizo_total"] = patrimonio - custo_investido
-            if custo_investido > 0:
-                resumo["rentabilidade_total"] = ((patrimonio - custo_investido) / custo_investido) * 100
-            if top_ativo != "---":
-                resumo["top_ativo_nome"] = top_ativo
-                resumo["top_ativo_lucro"] = melhor_lucro
+        # 1. Calcula % Comprometido da Renda
+        percentual_gasto = 100.0
+        if entradas > 0:
+            percentual_gasto = (gastos_ajustados / entradas) * 100
+        elif gastos_ajustados == 0:
+            percentual_gasto = 0.0  # Não ganhou nada, mas não gastou nada
+
+        # 2. Inverte para SCORE (Quanto maior, melhor)
+        # Se gastou 30%, o Score é 70 (Ótimo). Se gastou 100%, Score é 0 (Ruim).
+        score = max(0.0, 100.0 - percentual_gasto)
+
+        # Define Texto Baseado no Score
+        if score >= 60:  # Gastou menos de 40% (Excelente/Perfeita)
+            texto = "Perfeita"
+        elif score >= 40:  # Gastou entre 40% e 60% (Ótima)
+            texto = "Ótima"
+        elif score >= 20:  # Gastou entre 60% e 80% (Boa/Regular)
+            texto = "Regular"
+        elif score >= 10:  # Gastou entre 80% e 90% (Atenção)
+            texto = "Atenção"
+        else:  # Gastou mais de 90% (Crítico)
+            texto = "Crítica"
+
+        resumo["saude_score"] = score
+        resumo["saude_texto"] = texto
 
     except Exception as e:
         print(f"Erro service: {e}")
@@ -144,35 +144,28 @@ def buscar_resumo_financeiro(user_id):
     return resumo
 
 
-# ==========================================
-# 3. GRÁFICOS
-# ==========================================
 def buscar_transacoes_graficos(user_id):
+    # (Código dos gráficos permanece igual ao anterior)
     try:
         uid = str(user_id)
         res_b = supabase.table("transacoes_bancarias").select("*").eq("id_usuario", uid).eq("concluido", True).execute()
         res_c = supabase.table("transacoes_cartao_credito").select("*").eq("id_usuario", uid).execute()
-
         frames = []
         if res_b.data:
             df = pd.DataFrame(res_b.data)
             df['valor'] = pd.to_numeric(df['valor'], errors='coerce')
             df['valor_grafico'] = df.apply(lambda x: x['valor'] if x['tipo'] == 'entrada' else -x['valor'], axis=1)
             frames.append(df[['data', 'valor_grafico', 'tipo', 'id_categoria', 'valor']])
-
         if res_c.data:
             df = pd.DataFrame(res_c.data)
             df['valor'] = pd.to_numeric(df['valor'], errors='coerce')
             df['valor_grafico'] = -df['valor']
             df['tipo'] = 'cartao'
             frames.append(df[['data', 'valor_grafico', 'tipo', 'id_categoria', 'valor']])
-
         if not frames: return pd.DataFrame()
-
         df_final = pd.concat(frames, ignore_index=True)
         df_final['data'] = pd.to_datetime(df_final['data'])
         if df_final['data'].dt.tz is not None: df_final['data'] = df_final['data'].dt.tz_localize(None)
-
         if 'id_categoria' in df_final.columns:
             try:
                 ids = df_final['id_categoria'].dropna().unique().tolist()
@@ -186,7 +179,6 @@ def buscar_transacoes_graficos(user_id):
                         df_final.rename(columns={'nome': 'categoria'}, inplace=True)
             except:
                 pass
-
         if 'categoria' not in df_final.columns: df_final['categoria'] = 'Geral'
         return df_final.sort_values('data')
     except:

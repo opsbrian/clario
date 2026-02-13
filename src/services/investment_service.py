@@ -8,25 +8,69 @@ from src.services.supabase_client import supabase
 from src.services.market_data_service import buscar_historico_cdi_diario, buscar_indicadores_economicos
 
 # ==========================================
-# 0. AJUSTES MANUAIS (ATIVOS SEM API)
+# 0. MAPAS E AJUSTES MANUAIS
 # ==========================================
 PRECOS_MANUAIS = {
-    "SNLG11": 1.24,
-    "SNLG11.SA": 1.24,
-    "SNEL11": 1.24
+    "SNLG11": 1.24, "SNLG11.SA": 1.24,
+    "SNEL11": 1.24, "SNEL11.SA": 1.24
 }
 
+# Traduz nomes comuns para Tickers do Yahoo
 TICKER_MAPPING = {
-    "FB": "META"
+    "FB": "META",
+    "SOL": "SOL-USD", "SOLANA": "SOL-USD",
+    "BTC": "BTC-USD", "BITCOIN": "BTC-USD",
+    "ETH": "ETH-USD", "ETHEREUM": "ETH-USD",
+    "USDT": "USDT-USD"
 }
 
 
 # ==========================================
-# 1. FUNÇÕES DE ESCRITA (SALVAR)
+# 1. FUNÇÕES AUXILIARES (RESOLVER TICKER)
+# ==========================================
+def resolver_ticker_yahoo(ticker, categoria_id=None):
+    """
+    Lógica blindada para descobrir o ticker correto.
+    """
+    t = ticker.upper().strip()
+
+    # 1. Checa mapa manual
+    if t in TICKER_MAPPING:
+        return TICKER_MAPPING[t]
+
+    # 2. Se já tem sufixo, confia
+    if t.endswith(".SA") or t.endswith("-USD"):
+        return t
+
+    # 3. Lógica por Categoria do Banco de Dados
+    if categoria_id == 2:  # Categoria 2 = Cripto
+        return f"{t}-USD"
+
+    # 4. Lógica de Padrão Brasileiro (Tem número? Ex: PETR4, ALZR11)
+    if any(char.isdigit() for char in t):
+        if not t.endswith(".SA"):
+            return f"{t}.SA"
+
+    # 5. Default (Ações USA ou Cripto sem categoria definida)
+    return f"{t}-USD"
+
+
+def buscar_cotacao_dolar():
+    try:
+        usd = yf.Ticker("USDBRL=X").history(period="1d")
+        if not usd.empty:
+            return float(usd['Close'].iloc[-1])
+    except:
+        pass
+    return 5.80  # Fallback seguro
+
+
+# ==========================================
+# 2. FUNÇÕES DE ESCRITA (SALVAR)
 # ==========================================
 def salvar_investimento(user_id, data_op, ativo, cat_id, preco_un, qtd, taxa=None, indexador=None):
     try:
-        if int(cat_id) == 3:
+        if int(cat_id) == 3:  # Renda Fixa
             qtd = 1.0
             valor_total = float(preco_un)
         else:
@@ -54,12 +98,19 @@ def salvar_investimento(user_id, data_op, ativo, cat_id, preco_un, qtd, taxa=Non
 
 
 # ==========================================
-# 2. MOTOR DE CÁLCULO RENDA FIXA
+# 3. MOTOR DE CÁLCULO RENDA FIXA
 # ==========================================
 def calcular_valor_presente_inteligente(row, df_cdi_historico, indicadores_atuais):
     try:
         if row['id_categoria'] != 3: return 0.0
-        data_aporte = pd.to_datetime(row['data']).date()
+
+        # Converte para data segura
+        data_str = str(row['data'])
+        if 'T' in data_str:
+            data_aporte = datetime.strptime(data_str.split('T')[0], '%Y-%m-%d').date()
+        else:
+            data_aporte = datetime.strptime(data_str, '%Y-%m-%d').date()
+
         hoje = date.today()
         if data_aporte >= hoje: return float(row['valor_investido'])
 
@@ -100,167 +151,158 @@ def calcular_valor_presente_inteligente(row, df_cdi_historico, indicadores_atuai
 
 
 # ==========================================
-# 3. BUSCA DE PORTFOLIO (CORREÇÃO SOL-USD)
+# 4. BUSCA DE PORTFOLIO (MOTOR PRINCIPAL)
 # ==========================================
 def buscar_portfolio_real(user_id):
     try:
-        # 1. Busca Dados
+        # 1. Busca Dados no Banco
         res = supabase.table("investimento").select("*").eq("id_usuario", user_id).execute()
         if not res.data: return pd.DataFrame()
         df = pd.DataFrame(res.data)
 
-        # 2. Renda Fixa
+        # Garante tipos numéricos
+        df['quantidade'] = pd.to_numeric(df['quantidade'], errors='coerce').fillna(0)
+        df['valor_investido'] = pd.to_numeric(df['valor_investido'], errors='coerce').fillna(0)
+
+        # 2. Processa Renda Fixa (Cat 3)
         df_cdi_hist = buscar_historico_cdi_diario()
         indicadores_atuais = buscar_indicadores_economicos()
-        df['valor_projetado_fixa'] = df.apply(
-            lambda r: calcular_valor_presente_inteligente(r, df_cdi_hist, indicadores_atuais), axis=1)
 
-        # 3. Agrupamento
+        df['valor_projetado_fixa'] = df.apply(
+            lambda r: calcular_valor_presente_inteligente(r, df_cdi_hist, indicadores_atuais), axis=1
+        )
+
+        # 3. Agrupamento Inicial
         portfolio = df.groupby(['descricao', 'id_categoria']).agg({
-            'quantidade': 'sum', 'valor_investido': 'sum', 'valor_projetado_fixa': 'sum'
+            'quantidade': 'sum',
+            'valor_investido': 'sum',
+            'valor_projetado_fixa': 'sum'
         }).reset_index()
+
         portfolio = portfolio[portfolio['quantidade'] > 0.000001].copy()
 
-        # 4. Renda Variável
-        df_mercado = portfolio[portfolio['id_categoria'].isin([1, 2])].copy()
-        mapa_precos = {}
+        # 4. Precificação de Mercado (Renda Variável)
+        df_var = portfolio[portfolio['id_categoria'].isin([1, 2])].copy()
 
-        if not df_mercado.empty:
+        cotacoes_finais = {}
+        usd_rate = buscar_cotacao_dolar()
 
-            # --- PREÇOS MANUAIS (Prioridade 1) ---
-            for ativo_man in PRECOS_MANUAIS:
-                mapa_precos[ativo_man] = PRECOS_MANUAIS[ativo_man]
+        tickers_para_buscar = []
+        mapa_ticker_yahoo_para_nome_banco = {}
 
-            # --- DÓLAR (Prioridade 2) ---
+        for idx, row in df_var.iterrows():
+            nome_banco = row['descricao']
+
+            if nome_banco in PRECOS_MANUAIS:
+                cotacoes_finais[nome_banco] = PRECOS_MANUAIS[nome_banco]
+                continue
+
+            ticker_y = resolver_ticker_yahoo(nome_banco, row['id_categoria'])
+            tickers_para_buscar.append(ticker_y)
+            mapa_ticker_yahoo_para_nome_banco[ticker_y] = nome_banco
+
+        tickers_unicos = list(set(tickers_para_buscar))
+        if tickers_unicos:
             try:
-                usd_obj = yf.Ticker("USDBRL=X")
-                usd_hist = usd_obj.history(period="1d")
-                if not usd_hist.empty:
-                    usd_rate = usd_hist['Close'].iloc[-1]
-                else:
-                    usd_rate = 5.80
-            except:
-                usd_rate = 5.80
+                dados = yf.download(tickers_unicos, period="1d", progress=False)['Close']
 
-            # --- PREPARAÇÃO INTELIGENTE DE TICKERS ---
-            tickers_api = []
-            mapa_ticker_banco_x_yahoo = {}
+                for t in tickers_unicos:
+                    preco = 0.0
+                    try:
+                        if len(tickers_unicos) == 1:
+                            preco = float(dados.iloc[-1])
+                        else:
+                            preco = float(dados[t].iloc[-1])
+                    except:
+                        pass
 
-            for ativo_banco in df_mercado['descricao'].unique():
-                # Se já tem preço manual, pula
-                if ativo_banco in mapa_precos: continue
+                    if preco > 0:
+                        if "-USD" in t:
+                            preco_brl = preco * usd_rate
+                        else:
+                            preco_brl = preco
 
-                ativo_limpo = ativo_banco.strip().upper()
-                ativo_corrigido = TICKER_MAPPING.get(ativo_limpo, ativo_limpo)
-
-                cat = df_mercado[df_mercado['descricao'] == ativo_banco]['id_categoria'].iloc[0]
-                sym_yahoo = ativo_corrigido
-
-                # --- CORREÇÃO DO ERRO SOL-USD ---
-                # Se terminar em -USD, é Cripto/Exterior, NÃO adiciona .SA
-                if ativo_corrigido.endswith("-USD"):
-                    sym_yahoo = ativo_corrigido
-                # Se terminar em .SA, já está certo
-                elif ativo_corrigido.endswith(".SA"):
-                    sym_yahoo = ativo_corrigido
-                # Se for Cat 2 (Cripto), adiciona -USD
-                elif cat == 2:
-                    sym_yahoo = f"{ativo_corrigido}-USD"
-                # Se for Cat 1 (Ação) e não tem ponto, adiciona .SA
-                elif cat == 1:
-                    sym_yahoo = f"{ativo_corrigido}.SA"
-
-                tickers_api.append(sym_yahoo)
-                mapa_ticker_banco_x_yahoo[sym_yahoo] = ativo_banco
-
-            # --- BUSCA NO YAHOO ---
-            cotacoes_temp = {}
-            if tickers_api:
-                # Tentativa 1: Bulk
-                try:
-                    dados = yf.download(tickers_api, period="2d", progress=False, auto_adjust=True, group_by='ticker')
-                    for sym in tickers_api:
-                        try:
-                            if len(tickers_api) == 1:
-                                series = dados['Close']
-                            else:
-                                if sym in dados:
-                                    series = dados[sym]['Close']
-                                else:
-                                    continue
-
-                            val = series.ffill().iloc[-1]
-                            if pd.notnull(val) and val > 0:
-                                cotacoes_temp[sym] = val
-                        except:
-                            pass
-                except:
-                    pass
-
-                # Tentativa 2: Individual (Repescagem)
-                for sym in tickers_api:
-                    if sym not in cotacoes_temp:
-                        try:
-                            single = yf.Ticker(sym).history(period="5d")
-                            if not single.empty:
-                                val = single['Close'].iloc[-1]
-                                if pd.notnull(val) and val > 0:
-                                    cotacoes_temp[sym] = val
-                        except:
-                            pass
-
-                # --- APLICAÇÃO E CONVERSÃO ---
-                for sym_yahoo, preco in cotacoes_temp.items():
-                    ativo_banco = mapa_ticker_banco_x_yahoo.get(sym_yahoo)
-                    if not ativo_banco: continue
-
-                    # Regra de Conversão:
-                    # Se termina em -USD (Ex: SOL-USD), multiplica pelo Dólar
-                    # Se NÃO tem .SA (Ex: AAPL), multiplica pelo Dólar
-
-                    eh_dolarizado = sym_yahoo.endswith("-USD") or (".SA" not in sym_yahoo)
-
-                    if eh_dolarizado:
-                        mapa_precos[ativo_banco] = preco * usd_rate
-                    else:
-                        mapa_precos[ativo_banco] = preco
+                        nome_original = mapa_ticker_yahoo_para_nome_banco.get(t)
+                        if nome_original:
+                            cotacoes_finais[nome_original] = preco_brl
+            except Exception as e:
+                print(f"Erro Yahoo Batch: {e}")
 
         # 5. Consolidação Final
-        def get_valor_atual(row):
-            if row['id_categoria'] == 3: return row['valor_projetado_fixa']
+        def calcular_total_atual(row):
+            if row['id_categoria'] == 3:
+                return row['valor_projetado_fixa']
 
-            ativo = row['descricao']
+            nome = row['descricao']
             custo = row['valor_investido']
+            qtd = row['quantidade']
 
-            preco = mapa_precos.get(ativo)
+            preco_mercado = cotacoes_finais.get(nome)
 
-            if preco and preco > 0:
-                return preco * row['quantidade']
+            if preco_mercado and preco_mercado > 0:
+                return preco_mercado * qtd
 
-            return custo
+            return custo  # Fallback
 
-        portfolio['Total Atual BRL'] = portfolio.apply(get_valor_atual, axis=1)
+        portfolio['Total Atual BRL'] = portfolio.apply(calcular_total_atual, axis=1)
+
+        # --- CORREÇÃO: ADICIONANDO A COLUNA QUE FALTAVA ---
         portfolio['Valor Hoje BRL'] = portfolio.apply(
-            lambda x: x['Total Atual BRL'] if x['id_categoria'] == 3 else (x['Total Atual BRL'] / x['quantidade']),
-            axis=1)
+            lambda x: x['Total Atual BRL'] if x['id_categoria'] == 3 else (
+                x['Total Atual BRL'] / x['quantidade'] if x['quantidade'] > 0 else 0),
+            axis=1
+        )
+
         portfolio['Lucro/Prejuízo BRL'] = portfolio['Total Atual BRL'] - portfolio['valor_investido']
         portfolio['Rentabilidade %'] = portfolio.apply(
-            lambda x: (x['Lucro/Prejuízo BRL'] / x['valor_investido'] * 100) if x['valor_investido'] > 0 else 0, axis=1)
+            lambda x: (x['Lucro/Prejuízo BRL'] / x['valor_investido'] * 100) if x['valor_investido'] > 0 else 0, axis=1
+        )
 
-        portfolio.rename(
-            columns={'descricao': 'Ativo', 'quantidade': 'Quantidade', 'valor_investido': 'Custo Total BRL'},
-            inplace=True)
+        portfolio.rename(columns={
+            'descricao': 'Ativo',
+            'quantidade': 'Quantidade',
+            'valor_investido': 'Custo Total BRL'
+        }, inplace=True)
+
         portfolio['Tipo'] = portfolio['id_categoria'].map({1: "Renda Variável", 2: "Cripto", 3: "Renda Fixa"})
 
         return portfolio.sort_values('Total Atual BRL', ascending=False)
 
     except Exception as e:
-        print(f"Erro portfolio: {e}")
+        print(f"Erro Portfolio Geral: {e}")
         return pd.DataFrame()
 
 
 # ==========================================
-# 3. AUXILIARES
+# 5. INTEGRAÇÃO COM DASHBOARD
+# ==========================================
+def buscar_dados_resumidos_dashboard(user_id):
+    """
+    Retorna apenas os números finais para o dashboard.
+    """
+    df = buscar_portfolio_real(user_id)
+
+    if df.empty:
+        return 0.0, 0.0, 0.0, "---", 0.0
+
+    saldo_total = df['Total Atual BRL'].sum()
+    custo_total = df['Custo Total BRL'].sum()
+    lucro_reais = saldo_total - custo_total
+
+    # Top Ativo
+    try:
+        top_row = df.loc[df['Lucro/Prejuízo BRL'].idxmax()]
+        top_nome = top_row['Ativo']
+        top_lucro = top_row['Lucro/Prejuízo BRL']
+    except:
+        top_nome = "---"
+        top_lucro = 0.0
+
+    return saldo_total, custo_total, lucro_reais, top_nome, top_lucro
+
+
+# ==========================================
+# 6. AUXILIARES E SUGESTÕES
 # ==========================================
 def pesquisar_ticker_yahoo(query):
     if not query or len(query) < 2: return []
@@ -282,7 +324,8 @@ def pesquisar_ticker_yahoo(query):
         return []
 
 
-def buscar_sugestoes_yahoo(termo): return pesquisar_ticker_yahoo(termo)
+def buscar_sugestoes_yahoo(termo):
+    return pesquisar_ticker_yahoo(termo)
 
 
 @st.cache_data(ttl=3600)
