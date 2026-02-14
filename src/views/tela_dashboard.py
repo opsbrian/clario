@@ -11,10 +11,9 @@ from src.utils.formatters import formatar_brl
 
 
 # ==========================================
-# 1. CSS PREMIUM MINIMALISTA & ADAPTATIVO
+# 1. CSS PREMIUM MINIMALISTA
 # ==========================================
 def inject_clario_css():
-    # CSS sem indentação interna para evitar que o Streamlit interprete como bloco de código
     st.markdown("""
 <style>
 :root { 
@@ -31,41 +30,35 @@ def inject_clario_css():
 .material-symbols-rounded { font-size: 16px; vertical-align: middle; margin-right: 4px; }
 .kpi-card { 
 background-color: var(--bg-card); 
-padding: 12px 16px;
-border-radius: 10px;
+padding: 14px 18px;
+border-radius: 12px;
 border: 1px solid var(--border-subtle);
 height: 125px; 
 display: flex;
 flex-direction: column;
 justify-content: space-between;
-position: relative;
-box-sizing: border-box;
 }
 .card-header {
-font-size: 0.62rem; font-weight: 700; text-transform: uppercase; 
+font-size: 0.65rem; font-weight: 700; text-transform: uppercase; 
 color: var(--text-secondary); letter-spacing: 0.05em;
 display: flex; align-items: center;
 }
 .card-value { 
-font-size: 1.15rem; font-weight: 700; color: var(--text-primary); 
+font-size: 1.25rem; font-weight: 700; color: var(--text-primary); 
 line-height: 1.1; margin-top: 2px;
 white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .card-sub { 
-font-size: 0.7rem; color: var(--text-secondary);
+font-size: 0.75rem; color: var(--text-secondary);
 display: flex; align-items: center; gap: 4px;
 white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.gauge-container {
-width: 100%; display: flex; flex-direction: column; align-items: center; margin-top: -12px;
-}
-.gauge-footer {
-width: 105px; display: flex; justify-content: space-between;
-font-size: 0.55rem; font-weight: 700; color: var(--text-secondary); margin-top: -8px;
-}
-.gauge-status-tag {
-font-size: 0.55rem; font-weight: 800; text-transform: uppercase;
-padding: 1px 6px; border-radius: 3px; margin-top: 2px;
+.gauge-container { width: 100%; display: flex; flex-direction: column; align-items: center; margin-top: -12px; }
+.gauge-footer { width: 105px; display: flex; justify-content: space-between; font-size: 0.55rem; font-weight: 700; color: var(--text-secondary); margin-top: -8px; }
+.gauge-status-tag { font-size: 0.55rem; font-weight: 800; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; margin-top: 2px; }
+.chart-placeholder {
+    height: 300px; display: flex; align-items: center; justify-content: center;
+    border: 1px dashed var(--border-subtle); border-radius: 12px; color: var(--text-secondary); font-size: 0.9rem;
 }
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" />
@@ -73,15 +66,12 @@ padding: 1px 6px; border-radius: 3px; margin-top: 2px;
 
 
 # ==========================================
-# 2. RENDERIZADORES (ZERO INDENTAÇÃO)
+# 2. RENDERIZADORES
 # ==========================================
-
 def render_kpi_card(icon, label, value, sub_html, color="#E73469"):
     html = f"""
 <div class="kpi-card" style="border-left: 3px solid {color};">
-<div class="card-header">
-<span class="material-symbols-rounded" style="color:{color};">{icon}</span>{label}
-</div>
+<div class="card-header"><span class="material-symbols-rounded" style="color:{color};">{icon}</span>{label}</div>
 <div class="card-body">
 <div class="card-value">{value}</div>
 <div class="card-sub">{sub_html}</div>
@@ -113,21 +103,15 @@ def render_gauge_card(score, status_text):
 """
     html = f"""
 <div class="kpi-card" style="border-left: 3px solid {cor};">
-<div class="card-header">
-<span class="material-symbols-rounded" style="color:{cor};">health_and_safety</span>Saúde Financeira
-</div>
-<div class="gauge-container">
-{svg_gauge}
-<div class="gauge-footer"><span>0</span><span>100</span></div>
-<span class="gauge-status-tag" style="color: {cor}; background: {bg_tag};">{status_text}</span>
-</div>
+<div class="card-header"><span class="material-symbols-rounded" style="color:{cor};">health_and_safety</span>Saúde Financeira</div>
+<div class="gauge-container">{svg_gauge}<div class="gauge-footer"><span>0</span><span>100</span></div><span class="gauge-status-tag" style="color: {cor}; background: {bg_tag};">{status_text}</span></div>
 </div>
 """
     st.markdown(html, unsafe_allow_html=True)
 
 
 # ==========================================
-# 3. CONSTRUÇÃO DO DASHBOARD
+# 3. DASHBOARD
 # ==========================================
 def renderizar_dashboard():
     inject_clario_css()
@@ -141,66 +125,88 @@ def renderizar_dashboard():
     resumo = buscar_resumo_financeiro(uid)
     df = buscar_transacoes_graficos(uid)
 
-    # Identificação do Usuário: Prioridade para o Nome no Banco -> Metadados do Auth
+    # Saudação
     nome_usuario = perfil.get('nome')
     if not nome_usuario or nome_usuario == "Usuário":
         nome_usuario = st.session_state.user.user_metadata.get('full_name', 'Usuário')
-
-    primeiro_nome = nome_usuario.split()[0].title()
-    st.markdown(f"### Salut, {primeiro_nome}! 👋")
+    st.markdown(f"### Salut, {nome_usuario.split()[0].title()}! 👋")
 
     # --- KPIs ---
     k1, k2, k3, k4 = st.columns(4)
-
-    with k1:  # SALDO EM CONTA
+    with k1:
         contas = resumo.get('detalhe_contas', [])
         sub = "".join([
                           f"<span style='background:rgba(128,128,128,0.1); color:var(--text-secondary); padding:2px 5px; border-radius:3px; font-size:0.6rem; font-weight:600; margin-right:4px;'>{c['banco']}: {formatar_brl(c['saldo'])}</span>"
                           for c in contas[:2]]) if contas else "Saldo Disponível"
         render_kpi_card("account_balance", "Saldo Atual", formatar_brl(resumo.get('saldo_final', 0)), sub, "#18CB96")
-
-    with k2:  # CARTÃO DE CRÉDITO
+    with k2:
         dt_ini, dt_fim = resumo.get('cartao_inicio'), resumo.get('cartao_fim')
         sub = f"{dt_ini.split('-')[2]}/{dt_ini.split('-')[1]} a {dt_fim.split('-')[2]}/{dt_fim.split('-')[1]}" if dt_ini else "Ciclo de Fatura"
         render_kpi_card("credit_card", "Fatura Atual", formatar_brl(resumo.get('fatura_atual', 0)), sub, "#E73469")
-
-    with k3:  # INVESTIMENTOS
+    with k3:
         lucro_pct = resumo.get('invest_lucro_pct', 0.0)
         cor = "#18CB96" if lucro_pct >= 0 else "#FF4B4B"
         sub = f"<span style='color:{cor}; font-weight:600;'>Performance: {lucro_pct:.1f}%</span>"
         render_kpi_card("monitoring", "Investimentos", formatar_brl(resumo.get('invest_saldo_atual', 0.0)), sub,
                         "#FF751F")
-
-    with k4:  # PATRIMÔNIO TOTAL
+    with k4:
         render_kpi_card("savings", "Patrimônio Total", formatar_brl(resumo.get('balanco_liquido', 0.0)), "Consolidado",
                         "#18CB96")
 
-    # --- GRÁFICOS ---
+    # --- GRÁFICOS (ÁREA CRÍTICA) ---
     st.markdown("<br>", unsafe_allow_html=True)
-    if not df.empty:
-        c1, c2 = st.columns([2.5, 1])
+
+    # Placeholder se não houver dados
+    if df.empty:
+        st.markdown(
+            '<div class="chart-placeholder"><span class="material-symbols-rounded">bar_chart_off</span>Sem movimentações registradas neste período.</div>',
+            unsafe_allow_html=True)
+    else:
+        c1, c2 = st.columns([3, 1])  # Proporção ajustada para dar espaço
+
         with c1:
             st.caption("Evolução Patrimonial")
-            df_evo = df[df['tipo'].isin(['entrada', 'saida'])].groupby('data')[
-                'valor_grafico'].sum().reset_index().sort_values('data')
+            # Agrupamento e Ordenação
+            df_evo = df[df['tipo'].isin(['entrada', 'saida'])].groupby('data')['valor_grafico'].sum().reset_index()
+            df_evo = df_evo.sort_values('data')
             df_evo['acumulado'] = df_evo['valor_grafico'].cumsum() + float(perfil.get('saldo_inicial', 0) or 0)
-            fig = go.Figure(
-                go.Scatter(x=df_evo['data'], y=df_evo['acumulado'], mode='lines', line=dict(color='#E73469', width=2),
-                           fill='tozeroy', fillcolor='rgba(231, 52, 105, 0.02)'))
-            fig.update_layout(height=220, margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor='rgba(0,0,0,0)',
-                              plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(showgrid=False, tickfont=dict(size=9)),
-                              yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.05)', tickfont=dict(size=9)))
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df_evo['data'], y=df_evo['acumulado'],
+                mode='lines', line=dict(color='#E73469', width=3, shape='spline'),
+                fill='tozeroy', fillcolor='rgba(231, 52, 105, 0.05)'
+            ))
+            # Layout maior e mais limpo
+            fig.update_layout(
+                height=320,
+                margin=dict(l=0, r=0, t=10, b=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showgrid=False, linecolor='rgba(128,128,128,0.2)'),
+                yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.05)', tickprefix="R$ ")
+            )
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
         with c2:
-            st.caption("Distribuição de Gastos")
+            st.caption("Gastos por Categoria")
             df_g = df[df['tipo'].isin(['saida', 'cartao', 'debito'])].copy()
             if not df_g.empty:
-                fig = px.pie(df_g, values=df_g['valor'].abs(), names='categoria', hole=0.8,
-                             color_discrete_sequence=['#E73469', '#FF85A2', '#18CB96', '#FF751F'])
-                fig.update_layout(height=220, margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
+                fig = px.pie(
+                    df_g, values=df_g['valor'].abs(), names='categoria', hole=0.7,
+                    color_discrete_sequence=['#E73469', '#FF85A2', '#18CB96', '#FF751F']
+                )
+                fig.update_layout(
+                    height=320,
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    showlegend=False
+                )
+                fig.update_traces(textposition='inside', textinfo='percent')
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            else:
+                st.info("Sem gastos.")
 
-    # --- ANÁLISE ESTRATÉGICA ---
+    # --- ANÁLISE ---
     st.markdown("<br>", unsafe_allow_html=True)
     a1, a2, a3 = st.columns(3)
     with a1:

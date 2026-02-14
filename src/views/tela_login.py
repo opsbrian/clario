@@ -6,16 +6,21 @@ from src.services.cookie_service import salvar_token_no_cookie
 from src.services.auth_service import login_user, enviar_email_recuperacao
 
 # --- CONFIGURAÇÃO DAS IMAGENS ---
-URL_PARA_FUNDO_CLARO = "https://eyyqaqtqylpmvhcfvtmn.supabase.co/storage/v1/object/public/logo/clario_escuro.png"
-URL_PARA_FUNDO_ESCURO = "https://eyyqaqtqylpmvhcfvtmn.supabase.co/storage/v1/object/public/logo/clario_claro.png"
+# Logo Escura (Texto Preto/Cinza) -> Para usar no Fundo Claro
+URL_LOGO_ESCURA = "https://eyyqaqtqylpmvhcfvtmn.supabase.co/storage/v1/object/public/logo/clario_escuro.png"
+
+# Logo Clara (Texto Branco) -> Para usar no Fundo Escuro
+URL_LOGO_CLARA = "https://eyyqaqtqylpmvhcfvtmn.supabase.co/storage/v1/object/public/logo/clario_claro.png"
 
 
-# --- POPUP DE CADASTRO ---
+# --- POPUP DE CADASTRO (Modal) ---
 @st.dialog("Criar uma conta no Clariô")
 def popup_cadastro():
-    st.markdown("<p style='color: var(--text-color); opacity: 0.8; font-size: 0.9em;'>Preencha os dados abaixo.</p>",
-                unsafe_allow_html=True)
-    with st.form("form_cadastro"):
+    st.markdown(
+        "<p style='color: var(--text-color); opacity: 0.8; font-size: 0.9em; margin-bottom: 15px;'>Preencha os dados abaixo para começar.</p>",
+        unsafe_allow_html=True)
+
+    with st.form("form_cadastro", clear_on_submit=False):
         c1, c2 = st.columns(2)
         with c1:
             nome = st.text_input("Nome")
@@ -30,84 +35,102 @@ def popup_cadastro():
         senha_cad = st.text_input("Senha", type="password")
         confirmar_senha = st.text_input("Confirme a Senha", type="password")
 
-        submitted = st.form_submit_button("Finalizar Cadastro", use_container_width=True, type="primary",
-                                          icon=":material/person_add:")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        submitted = st.form_submit_button("Finalizar Cadastro", use_container_width=True, type="primary")
 
         if submitted:
             if senha_cad != confirmar_senha:
-                st.error("Senhas não coincidem")
+                st.error("As senhas não coincidem.")
+            elif len(senha_cad) < 6:
+                st.error("A senha deve ter no mínimo 6 caracteres.")
             else:
                 try:
                     auth_response = supabase.auth.sign_up({
-                        "email": email_cad, "password": senha_cad,
-                        "options": {"data": {"nome": nome, "full_name": f"{nome} {sobrenome}"}}
+                        "email": email_cad,
+                        "password": senha_cad,
+                        "options": {"data": {"full_name": f"{nome} {sobrenome}"}}
                     })
 
                     if auth_response.user:
-                        # Força atualização da data no perfil público
-                        supabase.table("usuarios").insert({
-                            "id_usuario": auth_response.user.id,
-                            "email": email_cad,
-                            "data_nascimento": str(nascimento),
-                            "nome": nome
-                        }, upsert=True).execute()
+                        user_id = auth_response.user.id
+                        try:
+                            supabase.table("usuarios").insert({
+                                "id_usuario": user_id,
+                                "nome": f"{nome} {sobrenome}",
+                                "email": email_cad,
+                                "data_nascimento": str(nascimento),
+                                "pais": pais,
+                                "cidade": cidade
+                            }).execute()
+                        except Exception:
+                            pass
 
-                        st.success("Cadastro realizado! Verifique seu e-mail.")
-                        time.sleep(2)
-
-                        # [CORREÇÃO] Reseta o estado para fechar o modal antes do rerun
-                        st.session_state.mostrar_cadastro = False
+                        st.success("Cadastro realizado com sucesso!")
+                        time.sleep(1.5)
+                        st.session_state.abrir_modal_cadastro = False  # Fecha o modal via estado
                         st.rerun()
                     else:
-                        st.warning("Verifique o e-mail.")
+                        st.warning("Verifique se o e-mail já está cadastrado.")
                 except Exception as e:
-                    st.error(f"Erro: {e}")
+                    st.error(f"Erro ao cadastrar: {e}")
 
 
 # --- TELA PRINCIPAL ---
 def renderizar_login():
-    # Inicializa estados
+    # 1. Gerenciamento de Estado (Para evitar bugs de piscada)
     if "auth_mode" not in st.session_state:
         st.session_state.auth_mode = "login"
 
-    # [CORREÇÃO] Inicializa o estado do popup
-    if "mostrar_cadastro" not in st.session_state:
-        st.session_state.mostrar_cadastro = False
+    # Estado para controlar o modal manualmente (Bulletproof)
+    if "abrir_modal_cadastro" not in st.session_state:
+        st.session_state.abrir_modal_cadastro = False
 
-    # [CORREÇÃO] Função auxiliar apenas para mudar o estado
-    def abrir_modal_cadastro():
-        st.session_state.mostrar_cadastro = True
-
+    # 2. CSS Corrigido (Logo e Tema)
     st.markdown(f"""
         <style>
-        .block-container {{ padding-top: 0rem !important; padding-bottom: 0rem !important; margin-top: 0rem !important; }}
-        .login-logo-container {{ width: 100%; display: flex; justify-content: center; margin-top: -60px; margin-bottom: 10px; z-index: 1; }}
-        div.stButton > button[kind="primary"], div.stButton > button[kind="secondary"] {{
-            background-color: #E73469 !important; border: 1px solid #E73469 !important; color: white !important;
-            border-radius: 8px !important; height: 2em !important; font-weight: 600 !important;
+        .block-container {{ padding-top: 3rem !important; padding-bottom: 2rem !important; }}
+
+        .login-logo-container {{ 
+            width: 100%; display: flex; justify-content: center; margin-bottom: 25px; 
+        }}
+
+        /* LOGO PADRÃO (TEMA CLARO) -> Usa a logo ESCURA */
+        .login-logo-img {{
+            width: 260px; height: 90px; 
+            background-size: contain; background-repeat: no-repeat; background-position: center;
+            background-image: url('{URL_LOGO_ESCURA}'); 
+            transition: background-image 0.3s ease-in-out;
+        }}
+
+        /* LOGO TEMA ESCURO -> Usa a logo CLARA (Branca) */
+        [data-theme="dark"] .login-logo-img {{
+            background-image: url('{URL_LOGO_CLARA}') !important;
+        }}
+
+        div.stButton > button[kind="primary"] {{
+            background-color: #E73469 !important; border-color: #E73469 !important; color: white !important; font-weight: 600 !important;
+        }}
+        div.stButton > button[kind="secondary"] {{
+            border-color: #E73469 !important; color: #E73469 !important; background: transparent !important;
         }}
         div.stButton > button[kind="tertiary"] {{
-            color: #E73469 !important; border: none !important; background: transparent !important;
-            text-decoration: none !important; font-size: 0.9em !important;
+            color: gray !important; text-decoration: none !important; margin-top: -10px;
         }}
-        .login-logo-img {{
-            width: 100%; max-width: 500px; height: 200px; background-size: contain; 
-            background-repeat: no-repeat; background-position: center; transition: background-image 0.3s ease-in-out;
-        }}
-        .login-logo-img {{ background-image: url('{URL_PARA_FUNDO_CLARO}'); }}
-        [data-theme="dark"] .login-logo-img {{ background-image: url('{URL_PARA_FUNDO_ESCURO}') !important; }}
         </style>
     """, unsafe_allow_html=True)
 
-    _, col_central, _ = st.columns([1, 3, 1])
+    # 3. Layout
+    col1, col_central, col3 = st.columns([1, 4, 1])
 
     with col_central:
+        # Logo
         st.markdown('<div class="login-logo-container"><div class="login-logo-img"></div></div>',
                     unsafe_allow_html=True)
 
-        # ESTADO A: LOGIN
+        # --- MODO: LOGIN ---
         if st.session_state.auth_mode == "login":
-            st.markdown("<h3 style='text-align: center; margin-top: 0px;'>Acesse sua conta</h3>",
+            st.markdown("<h3 style='text-align: center; font-weight: 700; margin-bottom: 20px;'>Acesse sua conta</h3>",
                         unsafe_allow_html=True)
 
             email = st.text_input("E-mail", placeholder="seu@email.com", key="login_email")
@@ -115,52 +138,44 @@ def renderizar_login():
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            if st.button("Entrar", use_container_width=True, type="primary", icon=":material/login:"):
+            if st.button("Entrar", use_container_width=True, type="primary"):
                 user, erro = login_user(email, senha)
-
                 if user:
                     session = supabase.auth.get_session()
                     if session:
                         salvar_token_no_cookie(session.access_token)
-
                     st.session_state.user = user
                     st.session_state.logado = True
                     st.rerun()
                 else:
                     st.error(erro)
 
-            if st.button("Esqueci minha senha", type="tertiary", use_container_width=True, icon=":material/key:"):
+            # Botão que ativa o estado do modal
+            if st.button("Criar nova conta", type="secondary", use_container_width=True):
+                st.session_state.abrir_modal_cadastro = True
+                st.rerun()
+
+            # Lógica Blindada: Verifica o estado para abrir o modal
+            if st.session_state.abrir_modal_cadastro:
+                popup_cadastro()
+
+            if st.button("Esqueci minha senha", type="tertiary", use_container_width=True):
                 st.session_state.auth_mode = "recovery"
                 st.rerun()
 
-            st.markdown(
-                """<div style='text-align: center; margin: 15px 0; opacity: 0.5; font-size: 0.8em;'>— ou —</div>""",
-                unsafe_allow_html=True)
-
-            # [CORREÇÃO] Botão chama a função auxiliar via on_click
-            st.button("Criar nova conta",
-                      type="secondary",
-                      use_container_width=True,
-                      icon=":material/person_add:",
-                      on_click=abrir_modal_cadastro)
-
-            # [CORREÇÃO] Verificação de estado fora do botão para manter o modal aberto
-            if st.session_state.mostrar_cadastro:
-                popup_cadastro()
-
-        # ESTADO B: RECUPERAÇÃO (ATUALIZADO)
+        # --- MODO: RECUPERAÇÃO ---
         elif st.session_state.auth_mode == "recovery":
-            st.markdown("<h3 style='text-align: center; margin-top: 0px;'>Recuperar Senha</h3>", unsafe_allow_html=True)
-            st.info("Para sua segurança, confirme seus dados.")
+            st.markdown("<h3 style='text-align: center; font-weight: 700;'>Recuperar Senha</h3>",
+                        unsafe_allow_html=True)
+            st.info("Informe seus dados para receber o link de redefinição.")
 
             email_rec = st.text_input("E-mail Cadastrado", key="rec_email")
-
-            nascimento_rec = st.date_input("Data de Nascimento", value=None,
-                                           min_value=date(1920, 1, 1), max_value=date.today(), format="DD/MM/YYYY")
+            nascimento_rec = st.date_input("Data de Nascimento", value=None, min_value=date(1920, 1, 1),
+                                           max_value=date.today(), format="DD/MM/YYYY")
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            if st.button("Validar e Enviar Link", use_container_width=True, type="primary", icon=":material/send:"):
+            if st.button("Enviar Link", use_container_width=True, type="primary"):
                 if not email_rec or not nascimento_rec:
                     st.warning("Preencha todos os campos.")
                 else:
@@ -173,6 +188,6 @@ def renderizar_login():
                     else:
                         st.error(msg)
 
-            if st.button("Voltar para Login", type="tertiary", use_container_width=True, icon=":material/arrow_back:"):
+            if st.button("Voltar ao Login", type="tertiary", use_container_width=True):
                 st.session_state.auth_mode = "login"
                 st.rerun()
